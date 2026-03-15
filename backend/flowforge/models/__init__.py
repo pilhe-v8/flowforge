@@ -20,9 +20,6 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-# Timezone-aware timestamp type (maps to TIMESTAMPTZ in PostgreSQL)
-TZ = DateTime(timezone=True)
-
 
 class Base(DeclarativeBase):
     pass
@@ -118,7 +115,7 @@ class WorkflowVersion(Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     yaml_definition: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'draft'"))
     trigger_type: Mapped[Optional[str]] = mapped_column(String(50))
     node_count: Mapped[Optional[int]] = mapped_column(Integer)
     compilation_errors: Mapped[Optional[list]] = mapped_column(JSONB, server_default=text("'[]'"))

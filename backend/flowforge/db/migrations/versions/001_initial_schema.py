@@ -335,6 +335,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.UniqueConstraint("tenant_id", "slug"),
     )
+    op.create_index("idx_response_templates_tenant", "response_templates", ["tenant_id"])
 
     # token_usage
     op.create_table(
@@ -369,6 +370,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("token_usage")
+    op.drop_index("idx_response_templates_tenant", table_name="response_templates")
     op.drop_table("response_templates")
     op.drop_table("agent_profiles")
     op.drop_table("tool_registrations")

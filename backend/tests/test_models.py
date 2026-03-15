@@ -1,5 +1,4 @@
 import uuid
-import pytest
 from sqlalchemy import String, Integer, Boolean, Text, Numeric, DateTime, ARRAY
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from flowforge.models import (
