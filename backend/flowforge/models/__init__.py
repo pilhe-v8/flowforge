@@ -13,6 +13,7 @@ from sqlalchemy import (
     ARRAY,
     UniqueConstraint,
     DateTime,
+    Index,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -68,7 +69,7 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(300), unique=True, nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String(200))
-    role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="editor")
+    role: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'editor'"))
     password_hash: Mapped[Optional[str]] = mapped_column(String(200))
     is_active: Mapped[Optional[bool]] = mapped_column(Boolean, server_default=text("true"))
     created_at: Mapped[Optional[datetime]] = mapped_column(
@@ -150,7 +151,7 @@ class Session(Base):
     user_id: Mapped[Optional[str]] = mapped_column(String(200))
     workflow_state: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'"))
     step_count: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("0"))
-    status: Mapped[Optional[str]] = mapped_column(String(20), server_default="active")
+    status: Mapped[Optional[str]] = mapped_column(String(20), server_default=text("'active'"))
     created_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -179,7 +180,7 @@ class Execution(Base):
     )
     workflow_slug: Mapped[str] = mapped_column(String(200), nullable=False)
     workflow_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="queued")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'queued'"))
     input_data: Mapped[Optional[dict]] = mapped_column(JSONB)
     output_data: Mapped[Optional[dict]] = mapped_column(JSONB)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
@@ -331,6 +332,8 @@ class TokenUsage(Base):
     execution: Mapped[Optional["Execution"]] = relationship(
         "Execution", back_populates="token_usages"
     )
+
+    __table_args__ = (Index("idx_tokens_tenant_date", "tenant_id", "created_at"),)
 
 
 __all__ = [
