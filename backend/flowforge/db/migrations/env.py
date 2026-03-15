@@ -2,13 +2,10 @@ import asyncio
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 from flowforge.config import get_settings
+from flowforge.models import Base
 
 settings = get_settings()
-
-# TODO: import Base.metadata here in Task 2 when models are defined
-# from flowforge.models import Base
-# target_metadata = Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_online():
