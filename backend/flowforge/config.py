@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     health_port: int = 8081
+    allowed_origins: list[str] = ["http://localhost:5173"]
 
     model_config = {"env_file": ".env", "env_prefix": "FLOWFORGE_"}
 

@@ -10,7 +10,6 @@ htmlcov/
 
 # Node
 node_modules/
-dist/
 .env.local
 
 # Env
