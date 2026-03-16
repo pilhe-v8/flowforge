@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: flowforge
+data:
+  litellm.config.yaml: |
+    # LiteLLM Proxy configuration
+    # Docs: https://docs.litellm.ai/docs/proxy/configs
+
+    model_list:
+      # Primary: Mistral
+      - model_name: default
+        litellm_params:
+          model: mistral/mistral-large-latest
+          api_key: os.environ/MISTRAL_API_KEY
+
+      # Fallback: Azure OpenAI
+      - model_name: azure-fallback
+        litellm_params:
+          model: azure/gpt-4o
+          api_key: os.environ/AZURE_OPENAI_API_KEY
+          api_base: os.environ/AZURE_OPENAI_API_BASE
+          api_version: "2024-02-01"
+
+    router_settings:
+      # Automatically failover from default → azure-fallback on error
+      fallbacks: [{"default": ["azure-fallback"]}]
+      num_retries: 3
+      retry_after: 1
+
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flowforge-litellm
+  namespace: flowforge
+  labels:
+    app: litellm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litellm
+  template:
+    metadata:
+      labels:
+        app: litellm
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:main-latest
+          args:
+            - "--config"
+            - "/app/config/litellm.config.yaml"
+          ports:
+            - containerPort: 4000
+          env:
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flowforge-secrets
+                  key: MISTRAL_API_KEY
+            - name: AZURE_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flowforge-secrets
+                  key: AZURE_OPENAI_API_KEY
+            - name: AZURE_OPENAI_API_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: flowforge-secrets
+                  key: AZURE_OPENAI_API_BASE
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: flowforge-secrets
+                  key: LITELLM_MASTER_KEY
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /app/config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: litellm-config
+          configMap:
+            name: litellm-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  namespace: flowforge
+spec:
+  selector:
+    app: litellm
+  ports:
+    - protocol: TCP
+      port: 4000
+      targetPort: 4000
