@@ -39,13 +39,13 @@ export function Toolbar() {
       <div className="flex items-center gap-1 ml-2">
         <button
           disabled={!isDirty}
-          onClick={() => { save().catch(console.error); }}
+          onClick={() => { save().catch(() => {}); }}
           className="px-3 py-1 bg-blue-500 text-white rounded text-sm disabled:opacity-40 hover:bg-blue-600"
         >
           💾 Save
         </button>
         <button
-          onClick={() => { deploy().catch(console.error); }}
+          onClick={() => { deploy().catch(() => {}); }}
           className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
         >
           🚀 Deploy

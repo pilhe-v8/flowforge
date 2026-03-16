@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import { toast } from 'sonner';
 import { ReactFlow, Background, Controls, MiniMap, applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import type { NodeChange, EdgeChange, Connection, Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -31,6 +32,7 @@ export default function App() {
   const removeNode = useWorkflowStore(s => s.removeNode);
   const tools = useToolCatalogueStore(s => s.tools);
   const agents = useToolCatalogueStore(s => s.agents);
+  const catalogueError = useToolCatalogueStore(s => s.error);
   const revalidate = useWorkflowStore(s => s.revalidate);
   const fetchCatalogue = useToolCatalogueStore(s => s.fetchCatalogue);
   const fetchAgentsAction = useToolCatalogueStore(s => s.fetchAgents);
@@ -40,6 +42,10 @@ export default function App() {
     void fetchAgentsAction();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (catalogueError) toast.error(`Catalogue: ${catalogueError}`);
+  }, [catalogueError]);
 
   useEffect(() => {
     revalidate(tools, agents);
