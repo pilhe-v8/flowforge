@@ -87,23 +87,53 @@ class NodeFactory:
 
     def _build_agent_node(self, step: StepDef) -> Callable:
         async def agent_node(state: dict) -> dict:
+            from datetime import datetime, timezone
+
+            started_at = datetime.now(timezone.utc)
             context = self._resolve_inputs(step.context_mapping, state)
             response_content = ""
-            model = step.model or "gpt-4o-mini"
+            model = step.model or "default"
+
             if self.profiles and self.llm:
                 profile = await self.profiles.load(step.agent_slug)
                 from flowforge.agents.prompt_builder import PromptBuilder
 
                 messages = PromptBuilder.build_messages(profile, context)
-                model = step.model or getattr(profile, "default_model", None) or "gpt-4o-mini"
+                model = step.model or getattr(profile, "default_model", None) or "default"
                 response = await self.llm.chat(messages, model=model)
-                response_content = response.content
+                response_content = response.content or ""
+                input_tokens = response.input_tokens
+                output_tokens = response.output_tokens
+            elif self.llm:
+                # No profile loader available — build a minimal direct-chat prompt
+                context_str = "\n".join(f"{k}: {v}" for k, v in context.items())
+                messages = [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": context_str or "Hello"},
+                ]
+                response = await self.llm.chat(messages, model=model)
+                response_content = response.content or ""
+                input_tokens = response.input_tokens
+                output_tokens = response.output_tokens
+            else:
+                input_tokens = 0
+                output_tokens = 0
+
+            completed_at = datetime.now(timezone.utc)
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+
             state[step.id] = {var: response_content for var in step.output_vars}
             state.setdefault("_audit_trail", []).append(
                 {
                     "step_id": step.id,
-                    "type": "agent",
+                    "step_name": step.name,
+                    "step_type": "agent",
                     "model": model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "started_at": started_at.isoformat(),
+                    "completed_at": completed_at.isoformat(),
+                    "duration_ms": duration_ms,
                     "input": context,
                     "output": state[step.id],
                 }
