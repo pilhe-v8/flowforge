@@ -9,3 +9,4 @@ data:
   LOG_LEVEL: INFO
   WORKER_HEALTH_PORT: "8081"
   GRAPH_CACHE_TTL: "300"
+  FLOWFORGE_ALLOWED_ORIGINS: '["https://flowforge.local","http://localhost:5173"]'
