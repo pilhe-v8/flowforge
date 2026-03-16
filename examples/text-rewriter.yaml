@@ -1,0 +1,17 @@
+workflow:
+  name: Text Rewriter
+  slug: text-rewriter
+  version: 1
+  description: "Rewrites text to be clearer and more concise using an inline LLM agent."
+  trigger:
+    type: manual
+    output: [input_data]
+  steps:
+    - id: rewrite
+      name: Rewrite
+      type: agent
+      system_prompt: "You are a professional writing assistant. Rewrite the following text to be clearer and more concise. Return only the rewritten text, no preamble."
+      model: default
+      context:
+        text: "{{trigger.input_data}}"
+      output: [reply]
