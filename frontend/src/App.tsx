@@ -10,6 +10,7 @@ import { ValidationBar } from './components/Layout/ValidationBar';
 import { PropertiesPanel } from './components/Layout/PropertiesPanel';
 import { useWorkflowStore } from './stores/workflowStore';
 import { useToolCatalogueStore } from './stores/toolCatalogueStore';
+import { useModelsStore } from './stores/modelsStore';
 
 export default function App() {
   // Dev auth bootstrap — auto-set JWT if not present (local dev only)
@@ -36,10 +37,12 @@ export default function App() {
   const revalidate = useWorkflowStore(s => s.revalidate);
   const fetchCatalogue = useToolCatalogueStore(s => s.fetchCatalogue);
   const fetchAgentsAction = useToolCatalogueStore(s => s.fetchAgents);
+  const fetchModels = useModelsStore(s => s.fetchModels);
 
   useEffect(() => {
     void fetchCatalogue();
     void fetchAgentsAction();
+    void fetchModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
