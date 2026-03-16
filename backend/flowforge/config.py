@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     health_port: int = 8081
     allowed_origins: list[str] = ["http://localhost:5173"]
+    litellm_url: str = "http://localhost:4000"
+    litellm_master_key: str = "sk-flowforge-local"
 
     model_config = {"env_file": ".env", "env_prefix": "FLOWFORGE_"}
 
