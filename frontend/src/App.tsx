@@ -41,6 +41,7 @@ export default function App() {
   const setEdges = useWorkflowStore(s => s.setEdges);
   const selectNode = useWorkflowStore(s => s.selectNode);
   const connectNodes = useWorkflowStore(s => s.connectNodes);
+  const removeNode = useWorkflowStore(s => s.removeNode);
   const tools = useToolCatalogueStore(s => s.tools);
   const agents = useToolCatalogueStore(s => s.agents);
   const revalidate = useWorkflowStore(s => s.revalidate);
@@ -78,6 +79,13 @@ export default function App() {
     [connectNodes],
   );
 
+  const onNodesDelete = useCallback(
+    (deleted: Node[]) => {
+      deleted.forEach(n => removeNode(n.id));
+    },
+    [removeNode],
+  );
+
   return (
     <div className="h-screen w-screen flex flex-col">
       <Toolbar />
@@ -91,6 +99,8 @@ export default function App() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onNodesDelete={onNodesDelete}
+            deleteKeyCode="Delete"
             onNodeClick={(_: React.MouseEvent, node: Node) => selectNode(node.id)}
             onPaneClick={() => selectNode(null)}
             fitView
