@@ -92,8 +92,8 @@ async def test_agent_node_uses_inline_system_prompt():
 
 
 @pytest.mark.asyncio
-async def test_agent_node_output_vars_forced_to_reply_when_system_prompt():
-    """When system_prompt is set, output is always stored under each declared output var."""
+async def test_agent_node_inline_stores_output_under_declared_vars():
+    """When system_prompt is set, the LLM response is stored under every declared output var."""
     from unittest.mock import AsyncMock, MagicMock
 
     mock_llm = AsyncMock()

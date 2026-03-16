@@ -108,6 +108,9 @@ class NodeFactory:
                     response_content = response.content or ""
                     input_tokens = response.input_tokens
                     output_tokens = response.output_tokens
+                # Note: if self.llm is None, response_content stays "" and token counts stay 0.
+                # This is consistent with the other branches but means inline agents silently no-op
+                # when no LLM client is injected (e.g., in pure unit tests without a mock LLM).
 
             elif self.profiles and self.llm:
                 # Profile-based agent (backward compat)
