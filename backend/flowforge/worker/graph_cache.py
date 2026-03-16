@@ -4,6 +4,7 @@ from typing import Tuple
 from sqlalchemy import select
 
 from flowforge.compiler import Compiler
+from flowforge.config import get_settings
 from flowforge.db.session import AsyncSessionLocal
 from flowforge.models import WorkflowVersion, Workflow
 from flowforge.llm.client import LLMClient
@@ -32,7 +33,11 @@ def _get_runtime_deps() -> tuple[ToolExecutor, LLMClient]:
         http_client = HTTPToolClient()
         _tool_executor = ToolExecutor(mcp_client=mcp_client, http_client=http_client)
     if _llm_client is None:
-        _llm_client = LLMClient()
+        settings = get_settings()
+        _llm_client = LLMClient(
+            base_url=settings.litellm_url,
+            api_key=settings.litellm_master_key,
+        )
     return _tool_executor, _llm_client
 
 
