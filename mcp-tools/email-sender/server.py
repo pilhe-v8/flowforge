@@ -33,11 +33,6 @@ async def _send_email_impl(to: str, subject: str, body: str) -> dict:
             "body_preview": body[:120],
         },
     )
-    # Also print to stdout for visibility in non-structured logging environments
-    print(
-        f"[email-service] SEND to={to!r} subject={subject!r} message_id={message_id}",
-        flush=True,
-    )
     return {"message_id": message_id, "status": "sent"}
 
 

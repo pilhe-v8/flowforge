@@ -13,6 +13,8 @@ from mcp.types import TextContent
 
 logger = logging.getLogger(__name__)
 
+logging.basicConfig(level=logging.INFO)
+
 mcp = FastMCP("ml-services")
 
 # ---------------------------------------------------------------------------
@@ -81,7 +83,7 @@ _NEGATIVE_WORDS = {
     "error",
     "fail",
     "failed",
-    "not working",
+    "unusable",
     "slow",
     "wrong",
     "unhappy",

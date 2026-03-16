@@ -6,12 +6,15 @@ Run with: python server.py  (stdio transport)
 """
 
 import asyncio
+import copy
 import json
 import logging
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 
 logger = logging.getLogger(__name__)
+
+logging.basicConfig(level=logging.INFO)
 
 mcp = FastMCP("crm-service")
 
@@ -97,7 +100,7 @@ _GUEST_CUSTOMER = {
 # ---------------------------------------------------------------------------
 async def _customer_lookup_impl(email: str) -> dict:
     """Return customer profile for *email*, or a guest record if not found."""
-    return _CUSTOMERS.get(email.lower().strip(), _GUEST_CUSTOMER)
+    return copy.deepcopy(_CUSTOMERS.get(email.lower().strip(), _GUEST_CUSTOMER))
 
 
 # ---------------------------------------------------------------------------

@@ -31,7 +31,7 @@ def load_module(path: Path, module_name: str):
 
 def run(coro):
     """Run a coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +141,10 @@ class TestSentimentAnalysis:
         )
         assert result["confidence"] <= 1.0
         assert result["confidence"] >= 0.0
+
+    def test_unusable_is_negative(self, sentiment_mod):
+        result = run(sentiment_mod._sentiment_analysis_impl("The app is completely unusable"))
+        assert result["sentiment"] == "negative"
 
 
 # ---------------------------------------------------------------------------
