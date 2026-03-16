@@ -10,6 +10,14 @@ const TRIGGER_TYPES: { value: TriggerType; label: string }[] = [
   { value: 'email_received', label: 'Email Received' },
 ];
 
+// Fix 4: Default output vars per trigger type
+const TRIGGER_OUTPUTS: Record<string, string[]> = {
+  email_received: ['sender', 'subject', 'body', 'attachments', 'received_at'],
+  webhook: ['payload', 'headers', 'received_at'],
+  schedule: ['scheduled_at', 'run_id'],
+  manual: ['input_data'],
+};
+
 export function TriggerPanel({ nodeId }: Props) {
   const nodes = useWorkflowStore(s => s.nodes);
   const updateNodeData = useWorkflowStore(s => s.updateNodeData);
@@ -37,7 +45,10 @@ export function TriggerPanel({ nodeId }: Props) {
         <select
           className="w-full border rounded px-2 py-1 text-sm"
           value={d.triggerType}
-          onChange={e => update({ triggerType: e.target.value as TriggerType })}
+          onChange={e => {
+            const newType = e.target.value as TriggerType;
+            update({ triggerType: newType, outputVars: TRIGGER_OUTPUTS[newType] ?? [] });
+          }}
         >
           {TRIGGER_TYPES.map(t => (
             <option key={t.value} value={t.value}>{t.label}</option>

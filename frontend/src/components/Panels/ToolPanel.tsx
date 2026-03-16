@@ -10,6 +10,7 @@ export function ToolPanel({ nodeId }: Props) {
   const nodes = useWorkflowStore(s => s.nodes);
   const updateNodeData = useWorkflowStore(s => s.updateNodeData);
   const tools = useToolCatalogueStore(s => s.tools);
+  const agents = useToolCatalogueStore(s => s.agents);
   const node = nodes.find(n => n.id === nodeId);
   const availableVars = useAvailableVariables(nodeId);
 
@@ -66,15 +67,37 @@ export function ToolPanel({ nodeId }: Props) {
         </div>
       )}
 
-      <div className="space-y-1">
-        <label className="text-xs text-gray-500">Output Variables (comma-separated)</label>
-        <input
-          className="w-full border rounded px-2 py-1 text-sm"
-          value={d.outputVars.join(', ')}
-          onChange={e => update({ outputVars: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="e.g. result, status"
-        />
-      </div>
+      {/* Fix 2: Output checkboxes from tool output_schema */}
+      {selectedTool?.outputSchema?.properties ? (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-gray-600 uppercase">Outputs</label>
+          {Object.keys(selectedTool.outputSchema.properties).map(varName => (
+            <label key={varName} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={d.outputVars.includes(varName)}
+                onChange={e => {
+                  const next = e.target.checked
+                    ? [...d.outputVars, varName]
+                    : d.outputVars.filter(v => v !== varName);
+                  update({ outputVars: next });
+                }}
+              />
+              {varName}
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <label className="text-xs text-gray-500">Output Variables (comma-separated)</label>
+          <input
+            className="w-full border rounded px-2 py-1 text-sm"
+            value={d.outputVars.join(', ')}
+            onChange={e => update({ outputVars: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+            placeholder="e.g. result, status"
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-xs text-gray-500">
@@ -98,12 +121,17 @@ export function ToolPanel({ nodeId }: Props) {
             </div>
             <div className="space-y-1">
               <label className="text-xs text-gray-400">Fallback Agent</label>
-              <input
+              {/* Fix 6: Agent dropdown for fallback */}
+              <select
                 className="w-full border rounded px-2 py-1 text-sm"
                 value={d.fallbackAgent ?? ''}
                 onChange={e => update({ fallbackAgent: e.target.value })}
-                placeholder="Agent slug..."
-              />
+              >
+                <option value="">Select agent...</option>
+                {agents.map(a => (
+                  <option key={a.slug} value={a.slug}>{a.name}</option>
+                ))}
+              </select>
             </div>
           </div>
         )}

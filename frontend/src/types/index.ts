@@ -11,6 +11,7 @@ export interface GateRule {
   if: string;       // expression string
   then: string;     // target step id
   label?: string;
+  combinator?: 'AND' | 'OR';
 }
 
 // Router route

@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { TestRunner } from '../TestRunner';
 
 export function Toolbar() {
   const meta = useWorkflowStore(s => s.meta);
@@ -33,6 +34,8 @@ export function Toolbar() {
         onChange={e => updateMeta({ name: e.target.value })}
         placeholder="Workflow name"
       />
+      {/* Fix 5: Version badge */}
+      <span className="text-xs text-gray-500 border rounded px-2 py-1">v{meta.version}</span>
       <div className="flex items-center gap-1 ml-2">
         <button
           disabled={!isDirty}
@@ -62,6 +65,8 @@ export function Toolbar() {
           className="hidden"
           onChange={handleLoadFile}
         />
+        {/* Fix 1: Test Runner button */}
+        <TestRunner onHighlight={(ids) => console.log('Highlighted step IDs:', ids)} />
       </div>
       {isDirty && <span className="text-xs text-orange-500 ml-auto">● Unsaved changes</span>}
     </div>

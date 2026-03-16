@@ -52,6 +52,18 @@ export function ConditionBuilder({ rules, onUpdate, availableVars, availableTarg
           <input className="border rounded px-1 py-1 text-sm w-full" placeholder="Label (e.g., VIP escalation)"
             value={rule.label || ''}
             onChange={e => updateRule(i, { label: e.target.value })} />
+          {/* Fix 3: AND/OR combinator selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Combinator:</span>
+            <select
+              className="border rounded px-1 py-0.5 text-xs"
+              value={rule.combinator ?? 'AND'}
+              onChange={e => updateRule(i, { combinator: e.target.value as 'AND' | 'OR' })}
+            >
+              <option value="AND">AND</option>
+              <option value="OR">OR</option>
+            </select>
+          </div>
         </div>
       ))}
       <button onClick={addRule} className="text-blue-500 text-sm hover:underline">+ Add Rule</button>
