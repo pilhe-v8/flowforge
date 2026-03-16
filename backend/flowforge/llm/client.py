@@ -48,6 +48,15 @@ class LLMClient:
             messages: OpenAI-style message list.
             model:    Override the virtual model name for this request.
                       Must match a ``model_name`` in ``litellm.config.yaml``.
+
+        Raises:
+            openai.APIConnectionError: The proxy could not be reached (network
+                failure, wrong ``base_url``, proxy not running, etc.).
+            openai.RateLimitError: The proxy returned HTTP 429 (rate limit
+                exceeded on the upstream provider or the proxy itself).
+            openai.APIStatusError: Any other non-2xx HTTP response from the
+                proxy (e.g. 400 bad request, 500 server error). The status
+                code and response body are available on the exception.
         """
         target_model = model or self.default_model
         response = await self._client.chat.completions.create(
@@ -55,9 +64,11 @@ class LLMClient:
             messages=messages,
             temperature=0.3,
         )
+        input_tokens = response.usage.prompt_tokens if response.usage else 0
+        output_tokens = response.usage.completion_tokens if response.usage else 0
         return LLMResponse(
             content=response.choices[0].message.content,
             model=target_model,
-            input_tokens=response.usage.prompt_tokens,
-            output_tokens=response.usage.completion_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )

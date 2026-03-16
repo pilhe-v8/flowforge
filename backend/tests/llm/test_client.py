@@ -103,12 +103,7 @@ class TestLLMClientChat:
         assert result.input_tokens == 100
         assert result.output_tokens == 50
 
-    @pytest.mark.asyncio
-    async def test_proxy_base_url_and_key_passed_to_client(self):
-        mock_response = make_openai_response("ok", "default", 1, 1)
+    def test_proxy_base_url_and_key_passed_to_client(self):
         with patch("flowforge.llm.client.openai.AsyncOpenAI") as MockAsyncOpenAI:
-            MockAsyncOpenAI.return_value.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
             LLMClient(base_url="http://proxy:4000", api_key="sk-secret")
         MockAsyncOpenAI.assert_called_once_with(base_url="http://proxy:4000", api_key="sk-secret")
