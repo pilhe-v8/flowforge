@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +96,11 @@ def parse_examples(text: str) -> list[dict]:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("Input:"):
+            if "input" in current and "output" not in current:
+                logger.warning(
+                    "Malformed examples: found Input: without preceding Output:, discarding: %s",
+                    current.get("input", ""),
+                )
             if "output" in current:
                 examples.append(current)
                 current = {}

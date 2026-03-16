@@ -63,3 +63,21 @@ class TestTemplateEngineRender:
         r2 = engine.render("{{ y }}", {"y": "second"})
         assert r1 == "first"
         assert r2 == "second"
+
+
+class TestTemplateEngineSecurity:
+    def test_ssti_is_blocked(self, engine):
+        """SandboxedEnvironment must prevent SSTI via dunder attribute chaining."""
+        with pytest.raises(Exception):  # SecurityError from sandbox
+            engine.render("{{ ''.__class__.__mro__ }}", {})
+
+    def test_ssti_subclasses_blocked(self, engine):
+        """SandboxedEnvironment must block __subclasses__() introspection."""
+        with pytest.raises(Exception):
+            engine.render("{{ ''.__class__.__mro__[1].__subclasses__() }}", {})
+
+    def test_ssti_dunder_access_silently_blocked(self, engine):
+        """Direct dunder access returns empty string rather than leaking internals."""
+        # The sandbox silently suppresses __class__ access — it does NOT leak the type
+        result = engine.render("{{ ''.__class__ }}", {})
+        assert "str" not in result  # must NOT expose Python internals

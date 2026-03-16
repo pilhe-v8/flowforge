@@ -1,13 +1,14 @@
 """Jinja2-backed template engine."""
 
-from jinja2 import Environment, BaseLoader
+from jinja2 import BaseLoader
+from jinja2.sandbox import SandboxedEnvironment
 
 
 class TemplateEngine:
     """Renders Jinja2 template strings with variable substitution."""
 
     def __init__(self):
-        self.env = Environment(loader=BaseLoader())
+        self.env = SandboxedEnvironment(loader=BaseLoader())
 
     def render(self, template_str: str, variables: dict) -> str:
         """Render *template_str* with the given *variables*.

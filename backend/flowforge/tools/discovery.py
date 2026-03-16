@@ -3,6 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -74,7 +75,7 @@ class MCPDiscovery:
                 ToolSchema(
                     name=tool.name,
                     slug=slugify(tool.name),
-                    uri=f"{endpoint}/{tool.name}",
+                    uri=f"{endpoint}/{quote(tool.name, safe='')}",
                     description=tool.description or "",
                     input_schema=tool.inputSchema if tool.inputSchema else {},
                     output_schema=getattr(tool, "outputSchema", None) or {},

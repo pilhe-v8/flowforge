@@ -1,8 +1,12 @@
 """MCP tool client — calls tools on MCP servers over SSE transport."""
 
 import json
+import logging
+from typing import Any
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+
+logger = logging.getLogger(__name__)
 
 
 def parse_mcp_uri(uri: str) -> tuple[str, str]:
@@ -42,6 +46,7 @@ class MCPToolClient:
 
     def __init__(self):
         self._sessions: dict[str, ClientSession] = {}
+        self._sse_cms: dict[str, Any] = {}  # store CMs for cleanup
 
     async def call(self, tool_uri: str, inputs: dict) -> dict:
         """Execute a tool identified by *tool_uri* with the given *inputs*."""
@@ -51,13 +56,28 @@ class MCPToolClient:
             self._sessions[endpoint] = await self._connect(endpoint)
 
         session = self._sessions[endpoint]
-        result = await session.call_tool(tool_name, arguments=inputs)
+        try:
+            result = await session.call_tool(tool_name, arguments=inputs)
+        except Exception:
+            # Session may be stale — evict and retry once
+            logger.warning("MCP session for %s appears stale, reconnecting and retrying.", endpoint)
+            del self._sessions[endpoint]
+            if endpoint in self._sse_cms:
+                del self._sse_cms[endpoint]
+            self._sessions[endpoint] = await self._connect(endpoint)
+            session = self._sessions[endpoint]
+            result = await session.call_tool(tool_name, arguments=inputs)
+
         return self._extract_result(result)
 
     def _extract_result(self, result) -> dict:
         """Extract a plain dict from an MCP CallToolResult."""
         if result.content and result.content[0].type == "text":
-            return json.loads(result.content[0].text)
+            text = result.content[0].text
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, ValueError):
+                return {"raw": text}
         return {"raw": str(result.content)}
 
     async def _connect(self, endpoint: str) -> ClientSession:
@@ -70,11 +90,19 @@ class MCPToolClient:
         # Convert mcp:// scheme to http:// for the SSE transport
         http_url = f"http://{host}:{port}/sse"
 
-        # sse_client is an async context manager that yields (read, write) streams.
-        # We intentionally *enter* the context manager here but do not exit it —
-        # the session lifetime matches the client lifetime.  For production use,
-        # manage teardown explicitly via close().
-        read_stream, write_stream = await sse_client(http_url).__aenter__()
+        cm = sse_client(http_url)
+        read_stream, write_stream = await cm.__aenter__()
+        self._sse_cms[endpoint] = cm  # store for later cleanup
         session = ClientSession(read_stream, write_stream)
         await session.initialize()
         return session
+
+    async def close(self):
+        """Close all cached MCP sessions and release SSE connections."""
+        for endpoint, cm in self._sse_cms.items():
+            try:
+                await cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+        self._sessions.clear()
+        self._sse_cms.clear()
