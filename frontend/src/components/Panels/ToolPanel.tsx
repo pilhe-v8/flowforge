@@ -89,13 +89,7 @@ export function ToolPanel({ nodeId }: Props) {
         </div>
       ) : (
         <div className="space-y-1">
-          <label className="text-xs text-gray-500">Output Variables (comma-separated)</label>
-          <input
-            className="w-full border rounded px-2 py-1 text-sm"
-            value={d.outputVars.join(', ')}
-            onChange={e => update({ outputVars: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-            placeholder="e.g. result, status"
-          />
+          <p className="text-xs text-gray-400 italic">Outputs defined by tool schema</p>
         </div>
       )}
 
