@@ -148,8 +148,9 @@ export function TestRunner({ onHighlight }: Props) {
           {running ? '⏳ Running...' : '▶ Run'}
         </button>
 
+        <div className="overflow-y-auto flex-1 flex flex-col gap-4">
         {steps.length > 0 && (
-          <div className="overflow-y-auto flex-1 border rounded p-2 space-y-2">
+          <div className="border rounded p-2 space-y-2">
             <h3 className="text-sm font-medium text-gray-700">Steps</h3>
             {steps.map(s => (
               <div
@@ -174,7 +175,7 @@ export function TestRunner({ onHighlight }: Props) {
         )}
 
         {detail && (detail.status === 'completed' || detail.status === 'failed') && (
-          <div className="mt-4 border-t pt-3 space-y-2">
+          <div className="border-t pt-3 space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase">Execution Summary</p>
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div className="bg-gray-50 rounded p-2">
@@ -204,7 +205,7 @@ export function TestRunner({ onHighlight }: Props) {
                   {step.model && (
                     <p className="text-gray-400 mt-0.5">
                       {step.model}
-                      {step.input_tokens != null && ` · ${step.input_tokens}↑ ${step.output_tokens}↓ tokens`}
+                      {step.input_tokens != null && step.output_tokens != null && ` · ${step.input_tokens}↑ ${step.output_tokens}↓ tokens`}
                       {step.duration_ms != null && ` · ${step.duration_ms}ms`}
                     </p>
                   )}
@@ -213,6 +214,7 @@ export function TestRunner({ onHighlight }: Props) {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
