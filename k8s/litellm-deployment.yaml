@@ -92,6 +92,8 @@ spec:
                   name: flowforge-secrets
                   key: LITELLM_MASTER_KEY
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: litellm-config
               mountPath: /app/config
               readOnly: true
@@ -108,6 +110,9 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
       volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
         - name: litellm-config
           configMap:
             name: litellm-config
