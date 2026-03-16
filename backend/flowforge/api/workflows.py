@@ -97,7 +97,7 @@ class WorkflowUpdateBody(BaseModel):
 
 
 class DeployBody(BaseModel):
-    version: int
+    version: Optional[int] = None
 
 
 class RollbackBody(BaseModel):
@@ -272,21 +272,40 @@ async def update_workflow(
 @router.post("/{slug}/deploy")
 async def deploy_workflow(
     slug: str,
-    body: DeployBody,
+    body: DeployBody = DeployBody(),
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
 ):
     wf = await _get_workflow_or_404(db, tenant_id, slug)
 
-    # Find the version
-    stmt = select(WorkflowVersion).where(
-        WorkflowVersion.workflow_id == wf.id,
-        WorkflowVersion.version == body.version,
-    )
-    result = await db.execute(stmt)
-    wv = result.scalar_one_or_none()
-    if wv is None:
-        raise HTTPException(status_code=404, detail="Version not found")
+    if body.version is not None:
+        # Explicit version requested
+        stmt = select(WorkflowVersion).where(
+            WorkflowVersion.workflow_id == wf.id,
+            WorkflowVersion.version == body.version,
+        )
+        result = await db.execute(stmt)
+        wv = result.scalar_one_or_none()
+        if wv is None:
+            raise HTTPException(status_code=404, detail="Version not found")
+    else:
+        # No version specified — deploy the latest draft version
+        stmt = (
+            select(WorkflowVersion)
+            .where(
+                WorkflowVersion.workflow_id == wf.id,
+                WorkflowVersion.status == "draft",
+            )
+            .order_by(WorkflowVersion.version.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        wv = result.scalar_one_or_none()
+        if wv is None:
+            # Fall back to absolute latest if no draft exists
+            wv = await _get_latest_version(db, wf.id)
+        if wv is None:
+            raise HTTPException(status_code=404, detail="No versions found to deploy")
 
     # Try to compile
     errors, compiled_at = _try_compile(wv.yaml_definition)
@@ -310,7 +329,7 @@ async def deploy_workflow(
     deployed_at = datetime.now(timezone.utc)
     return {
         "slug": wf.slug,
-        "version": body.version,
+        "version": wv.version,
         "status": "active",
         "deployed_at": deployed_at.isoformat(),
     }

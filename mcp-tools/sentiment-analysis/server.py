@@ -148,9 +148,13 @@ async def sentiment_analysis(text: str) -> list[TextContent]:
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # stdio transport (default — works with MCP clients and testing)
-    asyncio.run(mcp.run_stdio_async())
+    import sys
 
-    # SSE transport (uncomment for Docker / HTTP usage):
-    # import uvicorn
-    # uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=9001)
+    if "--stdio" in sys.argv:
+        # stdio transport (useful for local MCP client testing)
+        asyncio.run(mcp.run_stdio_async())
+    else:
+        # SSE transport (default — required for Docker / HTTP deployments)
+        import uvicorn
+
+        uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=9001)

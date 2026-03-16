@@ -32,6 +32,7 @@ class MessageEnvelope:
     workflow_slug: str
     tenant_id: str
     input_data: dict
+    execution_id: str | None = None
 
     @classmethod
     def parse(cls, data: dict) -> "MessageEnvelope":
@@ -61,6 +62,7 @@ class MessageEnvelope:
             workflow_slug=decoded.get("workflow_slug", ""),
             tenant_id=decoded.get("tenant_id", ""),
             input_data=input_data,
+            execution_id=decoded.get("execution_id"),
         )
 
 
@@ -70,8 +72,13 @@ class AuditLog:
     @staticmethod
     async def write(envelope: MessageEnvelope, result, workflow_version: int = 0) -> None:
         async with AsyncSessionLocal() as db:
-            # Upsert the execution row
-            execution_id = uuid.uuid4()
+            # Use the execution_id from the envelope so we UPDATE the existing
+            # "queued" row that the API already inserted, rather than creating
+            # a new orphan row.
+            if envelope.execution_id:
+                execution_id = uuid.UUID(envelope.execution_id)
+            else:
+                execution_id = uuid.uuid4()
             now = datetime.utcnow()
 
             exec_insert = pg_insert(ExecutionModel).values(

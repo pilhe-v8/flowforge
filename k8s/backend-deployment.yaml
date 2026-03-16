@@ -1,3 +1,4 @@
+# Build: docker build -t flowforge/backend:latest ./backend && docker push flowforge/backend:latest
 apiVersion: v1
 kind: Service
 metadata:

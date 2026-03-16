@@ -4,9 +4,9 @@ metadata:
   name: flowforge-config
   namespace: flowforge
 data:
-  REDIS_URL: redis://redis:6379
-  QDRANT_URL: http://qdrant:6333
-  LOG_LEVEL: INFO
-  WORKER_HEALTH_PORT: "8081"
-  GRAPH_CACHE_TTL: "300"
+  FLOWFORGE_REDIS_URL: redis://redis:6379
+  FLOWFORGE_QDRANT_URL: http://qdrant:6333
+  FLOWFORGE_LOG_LEVEL: INFO
+  FLOWFORGE_WORKER_HEALTH_PORT: "8081"
+  FLOWFORGE_GRAPH_CACHE_TTL: "300"
   FLOWFORGE_ALLOWED_ORIGINS: '["https://flowforge.local","http://localhost:5173"]'
