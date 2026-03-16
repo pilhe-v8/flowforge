@@ -1,6 +1,7 @@
 import re
 from typing import Any, Callable
 from .parser import StepDef, TriggerDef
+from .safe_eval import SafeExprEvaluator
 
 VAR_REF_PATTERN = re.compile(r"\{\{(\w+)\.(\w+)\}\}")
 
@@ -54,6 +55,22 @@ class NodeFactory:
             result = {}
             if self.tool_executor:
                 result = await self.tool_executor.execute(step.tool_uri, inputs)
+
+            # Check fallback
+            if step.fallback:
+                threshold_met = self._evaluate_fallback(step.fallback.when, result)
+                if threshold_met:
+                    fb_inputs = self._resolve_inputs(step.fallback.input, state)
+                    messages = fb_inputs  # Placeholder: full PromptBuilder wired in Task 5
+                    if self.profiles and self.llm:
+                        profile = await self.profiles.load(step.fallback.agent)
+                        from flowforge.agents.prompt_builder import PromptBuilder
+
+                        messages = PromptBuilder.build_messages(profile, fb_inputs)
+                        llm_result = await self.llm.chat(messages)
+                        for var in step.fallback.output:
+                            result[var] = llm_result.content
+
             state[step.id] = {var: result.get(var) for var in step.output_vars}
             state.setdefault("_audit_trail", []).append(
                 {"step_id": step.id, "type": "tool", "input": inputs, "output": state[step.id]}
@@ -62,10 +79,19 @@ class NodeFactory:
 
         return tool_node
 
+    def _evaluate_fallback(self, when: str, result: dict) -> bool:
+        """Evaluate a fallback condition expression against the tool result dict."""
+        evaluator = SafeExprEvaluator({"result": result})
+        try:
+            return evaluator.evaluate(when)
+        except ValueError:
+            return False
+
     def _build_agent_node(self, step: StepDef) -> Callable:
         async def agent_node(state: dict) -> dict:
             context = self._resolve_inputs(step.context_mapping, state)
             response_content = ""
+            model = step.model or "gpt-4o-mini"
             if self.profiles and self.llm:
                 profile = await self.profiles.load(step.agent_slug)
                 from flowforge.agents.prompt_builder import PromptBuilder
@@ -76,7 +102,13 @@ class NodeFactory:
                 response_content = response.content
             state[step.id] = {var: response_content for var in step.output_vars}
             state.setdefault("_audit_trail", []).append(
-                {"step_id": step.id, "type": "agent", "input": context, "output": state[step.id]}
+                {
+                    "step_id": step.id,
+                    "type": "agent",
+                    "model": model,
+                    "input": context,
+                    "output": state[step.id],
+                }
             )
             return state
 
@@ -96,6 +128,11 @@ class NodeFactory:
                 inputs = self._resolve_inputs(step.input_mapping, state)
                 template_str = step.template or ""
                 state[step.id] = {"text": template_str.format(**inputs)}
+            elif step.operation == "parse_email":
+                inputs = self._resolve_inputs(step.input_mapping, state)
+                raw_email = inputs.get("email", inputs.get("content", ""))
+                # Stub: extract basic fields from raw email text
+                state[step.id] = {var: raw_email for var in step.output_vars}
             else:
                 inputs = self._resolve_inputs(step.input_mapping, state)
                 state[step.id] = inputs

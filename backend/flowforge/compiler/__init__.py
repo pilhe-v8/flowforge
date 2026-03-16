@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import json
+import yaml
 import jsonschema
 from pathlib import Path
 
@@ -39,7 +40,24 @@ class Compiler:
         self.graph_builder = GraphBuilder(self.node_factory)
 
     def compile(self, yaml_string: str) -> CompilationResult:
-        # 1. Parse YAML
+        # 1. Parse raw YAML
+        try:
+            raw = yaml.safe_load(yaml_string)
+        except Exception as e:
+            return CompilationResult(
+                graph=None, errors=[ValidationError(step_id=None, field="yaml", message=str(e))]
+            )
+
+        # 2. JSON Schema validation against the raw parsed YAML dict
+        try:
+            jsonschema.validate(raw, _SCHEMA)
+        except jsonschema.ValidationError as e:
+            return CompilationResult(
+                graph=None,
+                errors=[ValidationError(step_id=None, field="schema", message=e.message)],
+            )
+
+        # 3. Parse into typed dataclasses (pass original YAML string)
         try:
             wf = self.parser.parse(yaml_string)
         except Exception as e:
@@ -47,34 +65,12 @@ class Compiler:
                 graph=None, errors=[ValidationError(step_id=None, field="yaml", message=str(e))]
             )
 
-        # 2. JSON Schema validation
-        try:
-            jsonschema.validate(
-                {
-                    "workflow": {
-                        "name": wf.name,
-                        "slug": wf.slug,
-                        "version": wf.version,
-                        "trigger": {"type": wf.trigger.type, "output": wf.trigger.output},
-                        "steps": [
-                            {"id": s.id, "name": s.name, "type": s.step_type} for s in wf.steps
-                        ],
-                    }
-                },
-                _SCHEMA,
-            )
-        except jsonschema.ValidationError as e:
-            return CompilationResult(
-                graph=None,
-                errors=[ValidationError(step_id=None, field="schema", message=e.message)],
-            )
-
-        # 3. Reference + variable validation
+        # 4. Reference + variable validation
         errors = self.validator.validate(wf)
         if errors:
             return CompilationResult(graph=None, errors=errors)
 
-        # 4. Build + compile graph
+        # 5. Build + compile graph
         try:
             graph = self.graph_builder.build(wf)
         except Exception as e:

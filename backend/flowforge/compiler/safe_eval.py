@@ -10,11 +10,10 @@ SAFE_OPS = {
     ast.Gt: operator.gt,
     ast.LtE: operator.le,
     ast.GtE: operator.ge,
-}
-
-SAFE_BOOL_OPS = {
     ast.And: all,
     ast.Or: any,
+    ast.Not: operator.not_,
+    ast.In: lambda left, right: left in right,
 }
 
 SAFE_FUNCTIONS = {
@@ -84,10 +83,8 @@ class SafeExprEvaluator:
 
     def _eval_boolop(self, node: ast.BoolOp) -> bool:
         values = [self._eval_node(v) for v in node.values]
-        if isinstance(node.op, ast.And):
-            return all(values)
-        elif isinstance(node.op, ast.Or):
-            return any(values)
+        if type(node.op) in SAFE_OPS:
+            return SAFE_OPS[type(node.op)](values)
         raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
 
     def _eval_call(self, node: ast.Call) -> Any:

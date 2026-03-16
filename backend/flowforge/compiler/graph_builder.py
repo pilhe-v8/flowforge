@@ -54,10 +54,9 @@ class GraphBuilder:
 
                 def make_gate_fn(s: StepDef = step):
                     def gate_fn(state: dict) -> str:
-                        evaluator = SafeExprEvaluator(state)
                         for i, rule in enumerate(s.rules):
                             try:
-                                if evaluator.evaluate(rule.condition):
+                                if self._evaluate_expression(rule.condition, state):
                                     return f"rule_{i}"
                             except ValueError:
                                 pass
@@ -81,3 +80,8 @@ class GraphBuilder:
             step_id, var = match.groups()
             return state.get(step_id, {}).get(var)
         return ref
+
+    def _evaluate_expression(self, expr: str, state: dict) -> bool:
+        """Evaluate a boolean expression string against the current graph state."""
+        evaluator = SafeExprEvaluator(state)
+        return evaluator.evaluate(expr)
