@@ -6,6 +6,7 @@ metadata:
 spec:
   selector:
     app: flowforge-worker
+  clusterIP: None
   ports:
     - port: 8081
       targetPort: 8081
@@ -25,9 +26,17 @@ spec:
       labels:
         app: flowforge-worker
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: worker
           image: flowforge/worker:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           command:
             - python
             - -m

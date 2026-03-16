@@ -36,7 +36,10 @@ spec:
             - name: POSTGRES_USER
               value: flowforge
             - name: POSTGRES_PASSWORD
-              value: flowforge
+              valueFrom:
+                secretKeyRef:
+                  name: flowforge-secrets
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: flowforge
           volumeMounts:
