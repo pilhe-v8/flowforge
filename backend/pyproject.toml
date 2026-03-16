@@ -45,6 +45,7 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["e2e: requires live Docker Compose stack"]
 
 [tool.ruff]
 line-length = 100

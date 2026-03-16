@@ -14,6 +14,8 @@ import pytest
 import httpx
 import yaml
 
+pytestmark = pytest.mark.e2e
+
 WORKFLOW_YAML_PATH = pathlib.Path(__file__).parent / "e2e_workflow.yaml"
 POLL_INTERVAL = 2  # seconds between status polls
 POLL_TIMEOUT = 90  # seconds total before failing
