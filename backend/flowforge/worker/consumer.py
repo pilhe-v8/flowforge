@@ -1,1 +1,181 @@
-# stub — implementation in later tasks
+import asyncio
+import os
+import uuid
+from dataclasses import dataclass
+from datetime import datetime
+
+import redis.asyncio as redis
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from flowforge.db.session import AsyncSessionLocal
+from flowforge.models import Execution as ExecutionModel, ExecutionStep
+from flowforge.worker.lock import SessionLock
+from flowforge.worker.executor import Executor
+from flowforge.worker.session_manager import SessionManager
+from flowforge.worker.graph_cache import GraphCache
+
+
+class RetryLater(Exception):
+    """Signal to skip ACK so the message will be re-delivered."""
+
+
+@dataclass
+class MessageEnvelope:
+    """Parsed message from the Redis stream."""
+
+    session_id: str
+    workflow_slug: str
+    tenant_id: str
+    input_data: dict
+
+    @classmethod
+    def parse(cls, data: dict) -> "MessageEnvelope":
+        """Decode bytes keys/values from a Redis stream message dict."""
+
+        def _decode(v):
+            if isinstance(v, bytes):
+                return v.decode()
+            return v
+
+        decoded = {
+            _decode(k): _decode(v)
+            for k, v in data.items()
+            if not (k.startswith(b"_") if isinstance(k, bytes) else k.startswith("_"))
+        }
+        # input_data may be a JSON-encoded field; if missing, use empty dict
+        import json
+
+        raw_input = data.get(b"input_data", data.get("input_data", "{}"))
+        if isinstance(raw_input, bytes):
+            raw_input = raw_input.decode()
+        try:
+            input_data = json.loads(raw_input)
+        except (json.JSONDecodeError, TypeError):
+            input_data = {}
+
+        return cls(
+            session_id=decoded.get("session_id", ""),
+            workflow_slug=decoded.get("workflow_slug", ""),
+            tenant_id=decoded.get("tenant_id", ""),
+            input_data=input_data,
+        )
+
+
+class AuditLog:
+    """Writes execution audit records to PostgreSQL."""
+
+    @staticmethod
+    async def write(envelope: MessageEnvelope, result) -> None:
+        async with AsyncSessionLocal() as db:
+            # Upsert the execution row
+            execution_id = uuid.uuid4()
+            now = datetime.utcnow()
+
+            exec_stmt = (
+                pg_insert(ExecutionModel)
+                .values(
+                    id=execution_id,
+                    tenant_id=envelope.tenant_id,
+                    session_id=envelope.session_id,
+                    workflow_slug=envelope.workflow_slug,
+                    workflow_version=0,
+                    status="completed",
+                    input_data=envelope.input_data,
+                    output_data=result.final_state,
+                    completed_at=now,
+                )
+                .on_conflict_do_nothing()
+            )
+            await db.execute(exec_stmt)
+
+            # Write one ExecutionStep row per audit trail entry
+            for step_entry in result.steps_executed:
+                if not isinstance(step_entry, dict):
+                    continue
+                step_stmt = pg_insert(ExecutionStep).values(
+                    id=uuid.uuid4(),
+                    execution_id=execution_id,
+                    step_id=step_entry.get("step_id", "unknown"),
+                    step_name=step_entry.get("step_name", step_entry.get("step_id", "unknown")),
+                    step_type=step_entry.get("step_type", "unknown"),
+                    status=step_entry.get("status", "completed"),
+                    input_data=step_entry.get("input_data"),
+                    output_data=step_entry.get("output_data"),
+                    started_at=step_entry.get("started_at"),
+                    completed_at=step_entry.get("completed_at"),
+                    duration_ms=step_entry.get("duration_ms"),
+                )
+                await db.execute(step_stmt)
+
+            await db.commit()
+
+
+class StreamConsumer:
+    """Consumes messages from a Redis Stream and executes workflow graphs."""
+
+    def __init__(self, settings):
+        self.redis = redis.from_url(settings.redis_url)
+        self.group = "flowforge-workers"
+        self.consumer_id = f"worker-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        self.stream_key = "flowforge:messages"
+        self.message_count = 0
+
+    async def setup(self):
+        try:
+            await self.redis.xgroup_create(self.stream_key, self.group, id="0", mkstream=True)
+        except redis.ResponseError:
+            pass  # Group already exists
+
+    async def consume(self):
+        await self.setup()
+        while True:
+            messages = await self.redis.xreadgroup(
+                groupname=self.group,
+                consumername=self.consumer_id,
+                streams={self.stream_key: ">"},
+                count=1,
+                block=5000,
+            )
+            if not messages:
+                continue
+
+            for stream, msg_list in messages:
+                for msg_id, data in msg_list:
+                    try:
+                        await self.process_message(data)
+                        await self.redis.xack(self.stream_key, self.group, msg_id)
+                        self.message_count += 1
+                    except RetryLater:
+                        pass
+                    except Exception as e:
+                        await self.handle_failure(msg_id, data, e)
+
+    async def process_message(self, data: dict):
+        envelope = MessageEnvelope.parse(data)
+        async with SessionLock(self.redis, envelope.session_id, ttl=120) as lock:
+            if not lock.acquired:
+                raise RetryLater("Session locked by another worker")
+
+            session = await SessionManager.load(envelope.session_id)
+            graph = await GraphCache.get_or_compile(
+                self.redis, envelope.workflow_slug, envelope.tenant_id
+            )
+            result = await Executor.run(graph, session, envelope.input_data)
+            await SessionManager.save(session)
+            await AuditLog.write(envelope, result)
+
+    async def handle_failure(self, msg_id, data, error):
+        retry_count = int(data.get(b"_retries", 0)) + 1
+        if retry_count >= 3:
+            await self.move_to_dlq(msg_id, data, error)
+            await self.redis.xack(self.stream_key, self.group, msg_id)
+        else:
+            data[b"_retries"] = str(retry_count).encode()
+            await self.redis.xadd(self.stream_key, data)
+            await self.redis.xack(self.stream_key, self.group, msg_id)
+
+    async def move_to_dlq(self, msg_id, data, error):
+        dlq_key = f"{self.stream_key}:dlq"
+        data[b"_error"] = str(error).encode()
+        await self.redis.xadd(dlq_key, data)
