@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import redis.asyncio as redis
 from sqlalchemy import select
@@ -71,6 +71,13 @@ class AuditLog:
 
     @staticmethod
     async def write(envelope: MessageEnvelope, result, workflow_version: int = 0) -> None:
+        # Validate tenant_id early — bail out loudly rather than crash mid-write
+        try:
+            tenant_uuid = uuid.UUID(envelope.tenant_id)
+        except (ValueError, AttributeError) as e:
+            logger.error("Invalid tenant_id in envelope: %s — %s", envelope.tenant_id, e)
+            return
+
         async with AsyncSessionLocal() as db:
             # Use the execution_id from the envelope so we UPDATE the existing
             # "queued" row that the API already inserted, rather than creating
@@ -79,33 +86,33 @@ class AuditLog:
                 execution_id = uuid.UUID(envelope.execution_id)
             else:
                 execution_id = uuid.uuid4()
-            now = datetime.utcnow()
 
-            exec_insert = pg_insert(ExecutionModel).values(
-                id=execution_id,
-                tenant_id=envelope.tenant_id,
-                session_id=envelope.session_id,
-                workflow_slug=envelope.workflow_slug,
-                workflow_version=workflow_version,
-                status="completed",
-                input_data=envelope.input_data,
-                output_data=result.final_state,
-                completed_at=now,
-            )
-            exec_stmt = exec_insert.on_conflict_do_update(
-                index_elements=["id"],
-                set_={
-                    "status": exec_insert.excluded.status,
-                    "output_data": exec_insert.excluded.output_data,
-                    "completed_at": exec_insert.excluded.completed_at,
-                },
-            )
-            await db.execute(exec_stmt)
+            now = datetime.now(timezone.utc)
 
-            # Write one ExecutionStep row per audit trail entry
+            # Compute timing from the audit trail (single pass)
+            starts = []
+            ends = []
+
+            # Single loop: write ExecutionStep + TokenUsage rows together
             for step_entry in result.steps_executed:
                 if not isinstance(step_entry, dict):
                     continue
+
+                # Collect timing data
+                if "started_at" in step_entry:
+                    starts.append(step_entry["started_at"])
+                if "completed_at" in step_entry:
+                    ends.append(step_entry["completed_at"])
+
+                # Build step_metadata, omitting keys whose values are None
+                raw_meta = {
+                    "model": step_entry.get("model"),
+                    "input_tokens": step_entry.get("input_tokens"),
+                    "output_tokens": step_entry.get("output_tokens"),
+                }
+                step_metadata = {k: v for k, v in raw_meta.items() if v is not None} or None
+
+                # Write ExecutionStep row
                 step_stmt = pg_insert(ExecutionStep).values(
                     id=uuid.uuid4(),
                     execution_id=execution_id,
@@ -118,18 +125,11 @@ class AuditLog:
                     started_at=step_entry.get("started_at"),
                     completed_at=step_entry.get("completed_at"),
                     duration_ms=step_entry.get("duration_ms"),
-                    step_metadata={
-                        "model": step_entry.get("model"),
-                        "input_tokens": step_entry.get("input_tokens"),
-                        "output_tokens": step_entry.get("output_tokens"),
-                    },
+                    step_metadata=step_metadata,
                 )
                 await db.execute(step_stmt)
 
-            # Write TokenUsage rows for agent steps that captured token data
-            for step_entry in result.steps_executed:
-                if not isinstance(step_entry, dict):
-                    continue
+                # Write TokenUsage row when token data is present
                 input_tokens = step_entry.get("input_tokens")
                 output_tokens = step_entry.get("output_tokens")
                 if input_tokens is not None and output_tokens is not None:
@@ -137,7 +137,7 @@ class AuditLog:
                         pg_insert(TokenUsage)
                         .values(
                             id=uuid.uuid4(),
-                            tenant_id=uuid.UUID(envelope.tenant_id),
+                            tenant_id=tenant_uuid,
                             execution_id=execution_id,
                             step_id=step_entry.get("step_id", "unknown"),
                             model=step_entry.get("model", "unknown"),
@@ -145,50 +145,45 @@ class AuditLog:
                             output_tokens=int(output_tokens),
                             cost_usd=None,
                         )
-                        .on_conflict_do_nothing()
+                        .on_conflict_do_nothing(index_elements=["execution_id", "step_id"])
                     )
 
-            # Set execution timing from audit trail
-            starts = [
-                e["started_at"]
-                for e in result.steps_executed
-                if isinstance(e, dict) and "started_at" in e
-            ]
-            ends = [
-                e["completed_at"]
-                for e in result.steps_executed
-                if isinstance(e, dict) and "completed_at" in e
-            ]
+            # Compute timing values (None when no step timing data available)
+            started_at: datetime | None = None
+            completed_at: datetime | None = now
+            duration_ms: int | None = None
             if starts and ends:
                 t0 = datetime.fromisoformat(min(starts))
                 t1 = datetime.fromisoformat(max(ends))
+                started_at = t0
+                completed_at = t1
                 duration_ms = int((t1 - t0).total_seconds() * 1000)
-                await db.execute(
-                    pg_insert(ExecutionModel)
-                    .values(
-                        id=execution_id,
-                        tenant_id=uuid.UUID(envelope.tenant_id),
-                        session_id=envelope.session_id,
-                        workflow_slug=envelope.workflow_slug,
-                        workflow_version=workflow_version,
-                        status="completed",
-                        input_data=envelope.input_data,
-                        output_data=result.final_state,
-                        started_at=t0,
-                        completed_at=t1,
-                        duration_ms=duration_ms,
-                    )
-                    .on_conflict_do_update(
-                        index_elements=["id"],
-                        set_={
-                            "status": "completed",
-                            "output_data": result.final_state,
-                            "started_at": t0,
-                            "completed_at": t1,
-                            "duration_ms": duration_ms,
-                        },
-                    )
-                )
+
+            # Single Execution upsert — covers both the timing and status in one round-trip
+            exec_insert = pg_insert(ExecutionModel).values(
+                id=execution_id,
+                tenant_id=tenant_uuid,
+                session_id=envelope.session_id,
+                workflow_slug=envelope.workflow_slug,
+                workflow_version=workflow_version,
+                status="completed",
+                input_data=envelope.input_data,
+                output_data=result.final_state,
+                started_at=started_at,
+                completed_at=completed_at,
+                duration_ms=duration_ms,
+            )
+            exec_stmt = exec_insert.on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "status": exec_insert.excluded.status,
+                    "output_data": exec_insert.excluded.output_data,
+                    "started_at": exec_insert.excluded.started_at,
+                    "completed_at": exec_insert.excluded.completed_at,
+                    "duration_ms": exec_insert.excluded.duration_ms,
+                },
+            )
+            await db.execute(exec_stmt)
 
             await db.commit()
 

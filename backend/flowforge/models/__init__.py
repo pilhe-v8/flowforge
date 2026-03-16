@@ -330,7 +330,10 @@ class TokenUsage(Base):
         "Execution", back_populates="token_usages"
     )
 
-    __table_args__ = (Index("idx_tokens_tenant_date", "tenant_id", "created_at"),)
+    __table_args__ = (
+        UniqueConstraint("execution_id", "step_id", name="uq_token_usage_execution_step"),
+        Index("idx_tokens_tenant_date", "tenant_id", "created_at"),
+    )
 
 
 __all__ = [
