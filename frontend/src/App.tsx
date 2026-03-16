@@ -6,33 +6,9 @@ import { nodeTypes } from './components/Nodes';
 import { NodePalette } from './components/Layout/NodePalette';
 import { Toolbar } from './components/Layout/Toolbar';
 import { ValidationBar } from './components/Layout/ValidationBar';
+import { PropertiesPanel } from './components/Layout/PropertiesPanel';
 import { useWorkflowStore } from './stores/workflowStore';
 import { useToolCatalogueStore } from './stores/toolCatalogueStore';
-import { TriggerPanel } from './components/Panels/TriggerPanel';
-import { ToolPanel } from './components/Panels/ToolPanel';
-import { AgentPanel } from './components/Panels/AgentPanel';
-import { RouterPanel } from './components/Panels/RouterPanel';
-import { GatePanel } from './components/Panels/GatePanel';
-import { OutputPanel } from './components/Panels/OutputPanel';
-
-function PropertiesPanel() {
-  const selectedNodeId = useWorkflowStore(s => s.selectedNodeId);
-  const nodes = useWorkflowStore(s => s.nodes);
-  if (!selectedNodeId) {
-    return <div className="p-4 text-gray-400 text-sm">Select a node to configure it</div>;
-  }
-  const node = nodes.find(n => n.id === selectedNodeId);
-  if (!node) return null;
-  switch (node.type) {
-    case 'trigger': return <TriggerPanel nodeId={selectedNodeId} />;
-    case 'tool':    return <ToolPanel nodeId={selectedNodeId} />;
-    case 'agent':   return <AgentPanel nodeId={selectedNodeId} />;
-    case 'router':  return <RouterPanel nodeId={selectedNodeId} />;
-    case 'gate':    return <GatePanel nodeId={selectedNodeId} />;
-    case 'output':  return <OutputPanel nodeId={selectedNodeId} />;
-    default:        return <div className="p-4 text-sm text-gray-500">Unknown node type</div>;
-  }
-}
 
 export default function App() {
   const nodes = useWorkflowStore(s => s.nodes);
