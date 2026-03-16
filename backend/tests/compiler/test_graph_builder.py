@@ -144,3 +144,72 @@ async def test_router_workflow_routes_to_default():
     final_state = await graph.ainvoke(initial_state)
     audit_step_ids = [entry["step_id"] for entry in final_state["_audit_trail"]]
     assert "out_tech" in audit_step_ids
+
+
+def test_gate_with_no_default_target_builds_successfully():
+    """A gate step with no default_target should compile without error (Critical 1 fix)."""
+    from flowforge.compiler.parser import GateRule
+
+    builder = make_builder()
+    wf = WorkflowDef(
+        name="Gate No Default",
+        slug="gate-no-default",
+        version=1,
+        description="",
+        tenant_id="t1",
+        trigger=TriggerDef(type="manual", config={}, output=["score"]),
+        steps=[
+            StepDef(
+                id="gate",
+                name="Gate",
+                step_type="gate",
+                rules=[GateRule(condition="score > 0.9", target="high_out", label="high")],
+                default_target=None,  # No default — was previously a KeyError at runtime
+            ),
+            StepDef(
+                id="high_out",
+                name="High Output",
+                step_type="output",
+                action_uri="mcp://svc/high",
+                input_mapping={},
+            ),
+        ],
+    )
+    # Should compile without raising
+    graph = builder.build(wf)
+    assert graph is not None
+
+
+async def test_gate_with_no_default_routes_to_end_when_no_rules_match():
+    """When a gate has no default_target and no rules match, it should reach END safely."""
+    from flowforge.compiler.parser import GateRule
+
+    builder = make_builder()
+    wf = WorkflowDef(
+        name="Gate No Default",
+        slug="gate-no-default",
+        version=1,
+        description="",
+        tenant_id="t1",
+        trigger=TriggerDef(type="manual", config={}, output=["score"]),
+        steps=[
+            StepDef(
+                id="gate",
+                name="Gate",
+                step_type="gate",
+                rules=[GateRule(condition="score > 0.9", target="high_out", label="high")],
+                default_target=None,
+            ),
+            StepDef(
+                id="high_out",
+                name="High Output",
+                step_type="output",
+                action_uri="mcp://svc/high",
+                input_mapping={},
+            ),
+        ],
+    )
+    graph = builder.build(wf)
+    # score=0.5 doesn't satisfy score > 0.9, so gate falls through to END
+    final_state = await graph.ainvoke({"trigger": {"score": 0.5}})
+    assert final_state is not None  # Should not raise KeyError

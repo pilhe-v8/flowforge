@@ -1,9 +1,7 @@
-import re
 from typing import Any, Callable
 from .parser import StepDef, TriggerDef
 from .safe_eval import SafeExprEvaluator
-
-VAR_REF_PATTERN = re.compile(r"\{\{(\w+)\.(\w+)\}\}")
+from .constants import VAR_REF_PATTERN
 
 
 class NodeFactory:
@@ -130,9 +128,11 @@ class NodeFactory:
                 state[step.id] = {"text": template_str.format(**inputs)}
             elif step.operation == "parse_email":
                 inputs = self._resolve_inputs(step.input_mapping, state)
-                raw_email = inputs.get("email", inputs.get("content", ""))
-                # Stub: extract basic fields from raw email text
-                state[step.id] = {var: raw_email for var in step.output_vars}
+                # TODO: implement email parsing (extract subject, body, from, etc.)
+                # This is a stub — stores the raw email content under each output var.
+                # Replace with a real email parser (e.g. using the `email` stdlib module).
+                raw = self._resolve_single(step.input_mapping.get("raw_email", ""), state)
+                state[step.id] = {var: raw for var in step.output_vars}
             else:
                 inputs = self._resolve_inputs(step.input_mapping, state)
                 state[step.id] = inputs

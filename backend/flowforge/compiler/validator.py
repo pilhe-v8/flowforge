@@ -1,9 +1,7 @@
-import re
 from dataclasses import dataclass
 from typing import Optional
 from .parser import WorkflowDef, StepDef
-
-VAR_REF_PATTERN = re.compile(r"\{\{(\w+)\.(\w+)\}\}")
+from .constants import VAR_REF_PATTERN
 
 
 @dataclass
@@ -84,6 +82,8 @@ class WorkflowValidator:
                 **step.context_mapping,
                 **step.template_vars,
             }
+            if step.fallback:
+                all_mappings.update(step.fallback.input)
             for param, ref in all_mappings.items():
                 for src_step, src_var in VAR_REF_PATTERN.findall(str(ref)):
                     full_ref = f"{{{{{src_step}.{src_var}}}}}"
@@ -95,6 +95,30 @@ class WorkflowValidator:
                                 f"Variable {full_ref} not available (not produced upstream)",
                             )
                         )
+
+        # Detect orphan nodes — steps that are unreachable from the first step
+        if wf.steps:
+            reachable: set[str] = set()
+            queue = [wf.steps[0].id]
+            while queue:
+                sid = queue.pop(0)
+                if sid in reachable:
+                    continue
+                reachable.add(sid)
+                src = next((s for s in wf.steps if s.id == sid), None)
+                if src:
+                    for target in self._get_targets(src):
+                        if target not in reachable:
+                            queue.append(target)
+            for step in wf.steps:
+                if step.id not in reachable:
+                    errors.append(
+                        ValidationError(
+                            step.id,
+                            "reachability",
+                            f"Step '{step.id}' is unreachable from the first step",
+                        )
+                    )
 
         return errors
 

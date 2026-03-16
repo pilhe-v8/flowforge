@@ -204,3 +204,26 @@ def test_not_in_operator():
     """intent not in ['billing', 'refund'] should be True when intent='other'."""
     ev = make_eval({"intent": "other"})
     assert ev.evaluate("intent not in ['billing', 'refund']") is True
+
+
+def test_step_scoped_attribute_lookup():
+    """Dot-notation (step_id.var_name) should resolve from the correct step namespace."""
+    ev = SafeExprEvaluator({"step_a": {"score": 0.9}, "step_b": {"score": 0.1}})
+    assert ev.evaluate("step_a.score > 0.5") is True
+    assert ev.evaluate("step_b.score > 0.5") is False
+
+
+def test_step_scoped_no_collision():
+    """When two steps produce the same variable name, scoped access must disambiguate."""
+    ev = SafeExprEvaluator({"step_a": {"score": 0.9}, "step_b": {"score": 0.2}})
+    # Flat lookup ('score') would be ambiguous; scoped access is unambiguous
+    assert ev.evaluate("step_a.score > 0.8") is True
+    assert ev.evaluate("step_b.score > 0.8") is False
+
+
+def test_step_scoped_attribute_missing_step():
+    """Accessing a var from a nonexistent step_id should return None gracefully."""
+    ev = SafeExprEvaluator({"step_a": {"score": 0.5}})
+    # nonexistent.score → None, so None == None is True
+    result = ev.evaluate("nonexistent_step.score == None")
+    assert result is True

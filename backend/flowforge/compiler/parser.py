@@ -79,8 +79,11 @@ def _slugify(name: str) -> str:
 
 
 class WorkflowParser:
-    def parse(self, yaml_string: str) -> WorkflowDef:
-        raw = yaml.safe_load(yaml_string)
+    def parse(self, yaml_string_or_dict) -> WorkflowDef:
+        if isinstance(yaml_string_or_dict, str):
+            raw = yaml.safe_load(yaml_string_or_dict)
+        else:
+            raw = yaml_string_or_dict
         wf = raw["workflow"]
 
         trigger = TriggerDef(

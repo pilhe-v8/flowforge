@@ -35,7 +35,31 @@
                 "type": "string",
                 "enum": ["tool", "agent", "router", "gate", "deterministic", "output"]
               }
-            }
+            },
+            "if": {"properties": {"type": {"const": "tool"}}},
+            "then": {"required": ["tool"]},
+            "allOf": [
+              {
+                "if": {"properties": {"type": {"const": "agent"}}},
+                "then": {"required": ["agent"]}
+              },
+              {
+                "if": {"properties": {"type": {"const": "router"}}},
+                "then": {"required": ["routes"]}
+              },
+              {
+                "if": {"properties": {"type": {"const": "gate"}}},
+                "then": {"required": ["rules"]}
+              },
+              {
+                "if": {"properties": {"type": {"const": "deterministic"}}},
+                "then": {"required": ["operation"]}
+              },
+              {
+                "if": {"properties": {"type": {"const": "output"}}},
+                "then": {"required": ["action"]}
+              }
+            ]
           }
         }
       },

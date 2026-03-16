@@ -233,3 +233,97 @@ def test_invalid_default_target_produces_error():
     wf = simple_workflow([router])
     errors = make_validator().validate(wf)
     assert any("ghost_step" in e.message for e in errors)
+
+
+def test_fallback_input_var_not_upstream_produces_error():
+    """A fallback.input referencing a nonexistent upstream variable should produce an error (Critical 3 fix)."""
+    step = StepDef(
+        id="s1",
+        name="S1",
+        step_type="tool",
+        tool_uri="mcp://crm-service/customer-lookup",
+        output_vars=["out"],
+        fallback=FallbackDef(
+            when="score < 0.5",
+            agent="general-agent",
+            input={"prompt_data": "{{nonexistent.var}}"},
+            output=[],
+        ),
+    )
+    wf = simple_workflow([step])
+    errors = make_validator().validate(wf)
+    assert any("nonexistent.var" in e.message for e in errors)
+
+
+def test_fallback_input_var_upstream_produces_no_error():
+    """A fallback.input referencing a valid upstream variable should not produce an error."""
+    producer = StepDef(
+        id="lookup",
+        name="Lookup",
+        step_type="tool",
+        tool_uri="mcp://crm-service/customer-lookup",
+        input_mapping={"email": "{{trigger.sender}}"},
+        output_vars=["name"],
+        next_step="consumer",
+    )
+    consumer = StepDef(
+        id="consumer",
+        name="Consumer",
+        step_type="tool",
+        tool_uri="mcp://ml-services/intent-classifier",
+        output_vars=["result"],
+        fallback=FallbackDef(
+            when="result == ''",
+            agent="general-agent",
+            input={"context": "{{lookup.name}}"},
+            output=[],
+        ),
+    )
+    wf = simple_workflow([producer, consumer])
+    errors = make_validator().validate(wf)
+    var_errors = [e for e in errors if "lookup.name" in e.message]
+    assert var_errors == []
+
+
+def test_orphan_step_produces_error():
+    """A step with no inbound edges (and not the first step) should produce a reachability error (Important 7 fix)."""
+    step_a = StepDef(
+        id="step_a",
+        name="A",
+        step_type="output",
+        action_uri="mcp://email-service/send",
+        input_mapping={},
+    )
+    orphan = StepDef(
+        id="orphan_step",
+        name="Orphan",
+        step_type="output",
+        action_uri="mcp://email-service/send",
+        input_mapping={},
+    )
+    wf = simple_workflow([step_a, orphan])
+    errors = make_validator().validate(wf)
+    assert any(e.step_id == "orphan_step" and e.field == "reachability" for e in errors)
+
+
+def test_all_reachable_steps_produce_no_orphan_error():
+    """When all steps are reachable, no reachability errors should be raised."""
+    step_a = StepDef(
+        id="step_a",
+        name="A",
+        step_type="tool",
+        tool_uri="mcp://crm-service/customer-lookup",
+        output_vars=["out"],
+        next_step="step_b",
+    )
+    step_b = StepDef(
+        id="step_b",
+        name="B",
+        step_type="output",
+        action_uri="mcp://email-service/send",
+        input_mapping={},
+    )
+    wf = simple_workflow([step_a, step_b])
+    errors = make_validator().validate(wf)
+    reachability_errors = [e for e in errors if e.field == "reachability"]
+    assert reachability_errors == []

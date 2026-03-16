@@ -57,9 +57,9 @@ class Compiler:
                 errors=[ValidationError(step_id=None, field="schema", message=e.message)],
             )
 
-        # 3. Parse into typed dataclasses (pass original YAML string)
+        # 3. Parse into typed dataclasses (pass pre-parsed dict to avoid double YAML parse)
         try:
-            wf = self.parser.parse(yaml_string)
+            wf = self.parser.parse(raw)
         except Exception as e:
             return CompilationResult(
                 graph=None, errors=[ValidationError(step_id=None, field="yaml", message=str(e))]

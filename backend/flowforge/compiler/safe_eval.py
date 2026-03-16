@@ -32,7 +32,9 @@ class SafeExprEvaluator:
     """
 
     def __init__(self, variables: dict[str, Any]):
-        # Flatten state: {step_id: {var: val}} -> {var: val}
+        # Keep original (unflattened) state for step-scoped lookup (step_id.var_name style)
+        self._state: dict[str, Any] = variables
+        # Flatten state: {step_id: {var: val}} -> {var: val} for backward-compatible simple name lookup
         self.vars: dict[str, Any] = {}
         for step_id, step_data in variables.items():
             if isinstance(step_data, dict):
@@ -54,6 +56,13 @@ class SafeExprEvaluator:
             return not self._eval_node(node.operand)
         elif isinstance(node, ast.Name):
             return self.vars.get(node.id)
+        elif isinstance(node, ast.Attribute):
+            # Handles step_id.var_name style references (e.g. step_a.score)
+            if isinstance(node.value, ast.Name):
+                step_id = node.value.id
+                step_data = self._state.get(step_id, {})
+                return step_data.get(node.attr) if isinstance(step_data, dict) else None
+            raise ValueError(f"Unsupported attribute access: {ast.dump(node)}")
         elif isinstance(node, ast.Constant):
             return node.value
         elif isinstance(node, ast.Call):

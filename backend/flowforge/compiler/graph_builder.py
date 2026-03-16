@@ -1,10 +1,8 @@
-import re
 from typing import Any
 from langgraph.graph import StateGraph, END
 from .parser import WorkflowDef, StepDef
 from .safe_eval import SafeExprEvaluator
-
-VAR_REF_PATTERN = re.compile(r"\{\{(\w+)\.(\w+)\}\}")
+from .constants import VAR_REF_PATTERN
 
 
 class GraphBuilder:
@@ -46,11 +44,12 @@ class GraphBuilder:
                 graph.add_conditional_edges(step.id, make_router_fn(), route_map)
 
             elif step.step_type == "gate":
-                targets: dict[str, str] = {}
+                targets: dict[str, Any] = {}
                 for i, rule in enumerate(step.rules):
                     targets[f"rule_{i}"] = rule.target
-                if step.default_target:
-                    targets["__default__"] = step.default_target
+                # Always include __default__ so gate_fn can safely return it.
+                # If no default_target is set, route to END to avoid KeyError.
+                targets["__default__"] = step.default_target if step.default_target else END
 
                 def make_gate_fn(s: StepDef = step):
                     def gate_fn(state: dict) -> str:
