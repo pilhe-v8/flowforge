@@ -150,10 +150,30 @@ export interface Execution {
 }
 
 export interface ExecutionStep {
-  id: string;
   step_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  step_name: string;
+  type: string;
+  status: string;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  duration_ms: number | null;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+}
+
+export interface ExecutionDetail {
+  execution_id: string;
+  workflow_slug: string;
+  status: string;
+  queued_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
   input_data: Record<string, unknown>;
   output_data: Record<string, unknown>;
-  created_at: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  estimated_cost_usd: number;
+  steps: ExecutionStep[];
 }

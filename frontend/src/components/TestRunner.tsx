@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useWorkflowStore } from '../stores/workflowStore';
-import { triggerExecution } from '../api/executions';
+import { triggerExecution, fetchExecutionDetail } from '../api/executions';
+import type { ExecutionDetail } from '../types';
 
 interface StepResult {
   stepId: string;
@@ -18,6 +19,7 @@ export function TestRunner({ onHighlight }: Props) {
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<StepResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ExecutionDetail | null>(null);
   const meta = useWorkflowStore(s => s.meta);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -30,6 +32,7 @@ export function TestRunner({ onHighlight }: Props) {
   const handleRun = async () => {
     setError(null);
     setSteps([]);
+    setDetail(null);
     setRunning(true);
     try {
       const data = JSON.parse(input) as Record<string, unknown>;
@@ -39,7 +42,7 @@ export function TestRunner({ onHighlight }: Props) {
       const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/executions/${execution_id}`);
       wsRef.current = ws;
 
-      ws.onmessage = (event: MessageEvent) => {
+      ws.onmessage = async (event: MessageEvent) => {
         try {
           const msg = JSON.parse(event.data as string) as {
             step_id?: string;
@@ -73,6 +76,12 @@ export function TestRunner({ onHighlight }: Props) {
             setRunning(false);
             ws.close();
             onHighlight([]);
+            try {
+              const executionDetail = await fetchExecutionDetail(execution_id);
+              setDetail(executionDetail);
+            } catch (e) {
+              console.error('Failed to fetch execution detail', e);
+            }
           }
         } catch {
           // ignore parse errors
@@ -161,6 +170,47 @@ export function TestRunner({ onHighlight }: Props) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {detail && (detail.status === 'completed' || detail.status === 'failed') && (
+          <div className="mt-4 border-t pt-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase">Execution Summary</p>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-gray-400">Duration</p>
+                <p className="font-mono font-medium">{detail.duration_ms ?? '—'}ms</p>
+              </div>
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-gray-400">Tokens</p>
+                <p className="font-mono font-medium">
+                  {detail.total_input_tokens} in / {detail.total_output_tokens} out
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded p-2">
+                <p className="text-gray-400">Est. Cost</p>
+                <p className="font-mono font-medium">${detail.estimated_cost_usd.toFixed(4)}</p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              {detail.steps.map(step => (
+                <div key={step.step_id} className="text-xs border rounded p-2 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{step.step_name ?? step.step_id}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      step.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>{step.status}</span>
+                  </div>
+                  {step.model && (
+                    <p className="text-gray-400 mt-0.5">
+                      {step.model}
+                      {step.input_tokens != null && ` · ${step.input_tokens}↑ ${step.output_tokens}↓ tokens`}
+                      {step.duration_ms != null && ` · ${step.duration_ms}ms`}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
