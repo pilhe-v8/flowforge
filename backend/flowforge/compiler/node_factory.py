@@ -93,8 +93,24 @@ class NodeFactory:
             context = self._resolve_inputs(step.context_mapping, state)
             response_content = ""
             model = step.model or "default"
+            input_tokens = 0
+            output_tokens = 0
 
-            if self.profiles and self.llm:
+            if step.system_prompt is not None:
+                # Inline agent: use system_prompt directly, bypass profile loader
+                context_str = "\n".join(f"{k}: {v}" for k, v in context.items())
+                messages = [
+                    {"role": "system", "content": step.system_prompt},
+                    {"role": "user", "content": context_str or "Hello"},
+                ]
+                if self.llm:
+                    response = await self.llm.chat(messages, model=model)
+                    response_content = response.content or ""
+                    input_tokens = response.input_tokens
+                    output_tokens = response.output_tokens
+
+            elif self.profiles and self.llm:
+                # Profile-based agent (backward compat)
                 profile = await self.profiles.load(step.agent_slug)
                 from flowforge.agents.prompt_builder import PromptBuilder
 
@@ -104,8 +120,9 @@ class NodeFactory:
                 response_content = response.content or ""
                 input_tokens = response.input_tokens
                 output_tokens = response.output_tokens
+
             elif self.llm:
-                # No profile loader available — build a minimal direct-chat prompt
+                # No profile loader, no system_prompt — generic fallback
                 context_str = "\n".join(f"{k}: {v}" for k, v in context.items())
                 messages = [
                     {"role": "system", "content": "You are a helpful assistant."},
@@ -115,9 +132,6 @@ class NodeFactory:
                 response_content = response.content or ""
                 input_tokens = response.input_tokens
                 output_tokens = response.output_tokens
-            else:
-                input_tokens = 0
-                output_tokens = 0
 
             completed_at = datetime.now(timezone.utc)
             duration_ms = int((completed_at - started_at).total_seconds() * 1000)
