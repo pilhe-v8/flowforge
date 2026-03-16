@@ -59,14 +59,27 @@ function serializeStep(node: WorkflowNode, edges: WorkflowEdge[], allNodes: Work
     }
     case 'agent': {
       const d = node.data as AgentNodeData;
-      return {
-        ...base,
-        agent: d.agentSlug,
-        ...(d.modelOverride ? { model: d.modelOverride } : {}),
-        context: d.context,
-        output: d.outputVars,
-        ...(nextStepId ? { next: nextStepId } : {}),
-      };
+      if (d.agentSlug) {
+        // Profile-based agent (backward compat)
+        return {
+          ...base,
+          agent: d.agentSlug,
+          ...(d.modelOverride ? { model: d.modelOverride } : {}),
+          context: d.context,
+          output: d.outputVars,
+          ...(nextStepId ? { next: nextStepId } : {}),
+        };
+      } else {
+        // Inline agent (systemPrompt-based)
+        return {
+          ...base,
+          system_prompt: d.systemPrompt ?? 'You are a helpful assistant.',
+          model: d.modelOverride ?? 'default',
+          context: d.context,
+          output: ['reply'],
+          ...(nextStepId ? { next: nextStepId } : {}),
+        };
+      }
     }
     case 'router': {
       const d = node.data as RouterNodeData;
@@ -162,7 +175,8 @@ export function yamlToCanvas(yamlString: string): { nodes: WorkflowNode[]; edges
         nodeData = {
           stepId,
           label: step.name as string,
-          agentSlug: step.agent as string,
+          agentSlug: step.agent as string | undefined,   // profile-based: `agent` key → agentSlug
+          systemPrompt: (step.system_prompt as string) ?? '', // inline: `system_prompt` key → systemPrompt
           modelOverride: step.model as string | undefined,
           context: (step.context as Record<string, string>) ?? {},
           outputVars: (step.output as string[]) ?? [],
