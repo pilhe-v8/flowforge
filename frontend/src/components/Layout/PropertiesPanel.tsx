@@ -5,11 +5,14 @@ import { AgentPanel } from '../Panels/AgentPanel';
 import { RouterPanel } from '../Panels/RouterPanel';
 import { GatePanel } from '../Panels/GatePanel';
 import { OutputPanel } from '../Panels/OutputPanel';
+import { DefinitionDrawer } from '../shared/DefinitionDrawer';
 
 export function PropertiesPanel() {
   const selectedNodeId = useWorkflowStore(s => s.selectedNodeId);
   const nodes = useWorkflowStore(s => s.nodes);
   const removeNode = useWorkflowStore(s => s.removeNode);
+
+  const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : undefined;
 
   let panelContent: React.ReactNode;
 
@@ -18,11 +21,10 @@ export function PropertiesPanel() {
       <div className="p-4 text-gray-400 text-sm">Select a node to configure it</div>
     );
   } else {
-    const node = nodes.find(n => n.id === selectedNodeId);
-    if (!node) {
+    if (!selectedNode) {
       panelContent = null;
     } else {
-      switch (node.type) {
+      switch (selectedNode.type) {
         case 'trigger': panelContent = <TriggerPanel nodeId={selectedNodeId} />; break;
         case 'tool':    panelContent = <ToolPanel nodeId={selectedNodeId} />; break;
         case 'agent':   panelContent = <AgentPanel nodeId={selectedNodeId} />; break;
@@ -39,6 +41,7 @@ export function PropertiesPanel() {
       <div className="flex-1 overflow-y-auto">
         {panelContent}
       </div>
+      {selectedNode && selectedNode.type && <DefinitionDrawer nodeType={selectedNode.type} />}
       {selectedNodeId && (
         <div className="border-t border-gray-200 p-3 mt-2">
           <button
