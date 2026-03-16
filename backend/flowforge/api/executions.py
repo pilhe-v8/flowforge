@@ -13,7 +13,14 @@ import redis.asyncio as aioredis
 from flowforge.api.deps import get_tenant_id
 from flowforge.config import get_settings
 from flowforge.db.session import get_db
-from flowforge.models import Execution, ExecutionStep, Session, Workflow, WorkflowVersion
+from flowforge.models import (
+    Execution,
+    ExecutionStep,
+    Session,
+    TokenUsage,
+    Workflow,
+    WorkflowVersion,
+)
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 settings = get_settings()
@@ -143,19 +150,59 @@ async def get_execution(
     if execution is None:
         raise HTTPException(status_code=404, detail="Execution not found")
 
-    # Get steps
-    steps_stmt = select(ExecutionStep).where(ExecutionStep.execution_id == exec_uuid)
+    # Compute token totals from TokenUsage table
+    token_rows = (
+        (await db.execute(select(TokenUsage).where(TokenUsage.execution_id == exec_uuid)))
+        .scalars()
+        .all()
+    )
+
+    total_input = sum(t.input_tokens for t in token_rows)
+    total_output = sum(t.output_tokens for t in token_rows)
+
+    COST_TABLE = {
+        "mistral-large-latest": {"input": 0.003, "output": 0.009},
+        "default": {"input": 0.003, "output": 0.009},
+        "gpt-4o": {"input": 0.005, "output": 0.015},
+        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+        "azure-fallback": {"input": 0.005, "output": 0.015},
+    }
+    estimated_cost = sum(
+        t.input_tokens / 1000 * COST_TABLE.get(t.model, COST_TABLE["default"])["input"]
+        + t.output_tokens / 1000 * COST_TABLE.get(t.model, COST_TABLE["default"])["output"]
+        for t in token_rows
+    )
+
+    # Order steps by started_at
+    steps_stmt = (
+        select(ExecutionStep)
+        .where(ExecutionStep.execution_id == exec_uuid)
+        .order_by(ExecutionStep.started_at.asc().nullsfirst())
+    )
     steps = (await db.execute(steps_stmt)).scalars().all()
 
     return {
         "execution_id": str(execution.id),
+        "workflow_slug": execution.workflow_slug,
         "status": execution.status,
+        "queued_at": execution.queued_at.isoformat() if execution.queued_at else None,
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
         "duration_ms": execution.duration_ms,
+        "input_data": execution.input_data,
+        "output_data": execution.output_data,
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "estimated_cost_usd": round(estimated_cost, 6),
         "steps": [
             {
                 "step_id": s.step_id,
+                "step_name": s.step_name,
                 "type": s.step_type,
                 "status": s.status,
+                "model": s.step_metadata.get("model") if s.step_metadata else None,
+                "input_tokens": s.step_metadata.get("input_tokens") if s.step_metadata else None,
+                "output_tokens": s.step_metadata.get("output_tokens") if s.step_metadata else None,
                 "duration_ms": s.duration_ms,
                 "input": s.input_data,
                 "output": s.output_data,

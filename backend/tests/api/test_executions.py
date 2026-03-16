@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from flowforge.main import app
@@ -189,6 +190,9 @@ class TestGetExecution:
                 MagicMock(
                     scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
                 ),
+                MagicMock(
+                    scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+                ),
             ]
         )
 
@@ -255,3 +259,67 @@ class TestListExecutions:
         client = override_deps(db=db)
         resp = client.get("/api/v1/executions?workflow_slug=my-workflow")
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Fixtures and test for enriched GET /executions/{id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def execution_with_steps():
+    """Return a tuple (execution, step) with MagicMock objects."""
+    execution = make_execution(status="completed")
+    execution.started_at = datetime.now(timezone.utc)
+    execution.completed_at = datetime.now(timezone.utc)
+    execution.output_data = {"result": "ok"}
+
+    step = MagicMock(spec=ExecutionStep)
+    step.step_id = "step-1"
+    step.step_name = "My Step"
+    step.step_type = "llm"
+    step.status = "completed"
+    step.duration_ms = 500
+    step.input_data = {"prompt": "hello"}
+    step.output_data = {"text": "world"}
+    step.started_at = datetime.now(timezone.utc)
+    step.step_metadata = {"model": "gpt-4o", "input_tokens": 10, "output_tokens": 20}
+
+    return execution, step
+
+
+@pytest.fixture
+def client(execution_with_steps):
+    """TestClient wired with a mock DB that returns execution_with_steps."""
+    execution, step = execution_with_steps
+    db = make_mock_db()
+
+    # Three db.execute calls: 1) get execution, 2) get token_rows, 3) get steps
+    db.execute = AsyncMock(
+        side_effect=[
+            MagicMock(scalar_one_or_none=MagicMock(return_value=execution)),
+            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+            MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[step])))
+            ),
+        ]
+    )
+
+    return override_deps(db=db)
+
+
+def test_get_execution_includes_enriched_fields(client, execution_with_steps):
+    """GET /executions/{id} must include model, tokens, duration per step."""
+    execution, _ = execution_with_steps
+    resp = client.get(f"/api/v1/executions/{execution.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "queued_at" in data
+    assert "duration_ms" in data
+    assert "workflow_slug" in data
+    step = data["steps"][0]
+    assert "step_name" in step
+    assert "model" in step
+    assert "input_tokens" in step
+    assert "output_tokens" in step
+    assert "duration_ms" in step
