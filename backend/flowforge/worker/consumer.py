@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from flowforge.db.session import AsyncSessionLocal
-from flowforge.models import Execution as ExecutionModel, ExecutionStep
+from flowforge.models import Execution as ExecutionModel, ExecutionStep, TokenUsage
 from flowforge.worker.lock import SessionLock
 from flowforge.worker.executor import Executor
 from flowforge.worker.session_manager import SessionManager
@@ -118,8 +118,77 @@ class AuditLog:
                     started_at=step_entry.get("started_at"),
                     completed_at=step_entry.get("completed_at"),
                     duration_ms=step_entry.get("duration_ms"),
+                    step_metadata={
+                        "model": step_entry.get("model"),
+                        "input_tokens": step_entry.get("input_tokens"),
+                        "output_tokens": step_entry.get("output_tokens"),
+                    },
                 )
                 await db.execute(step_stmt)
+
+            # Write TokenUsage rows for agent steps that captured token data
+            for step_entry in result.steps_executed:
+                if not isinstance(step_entry, dict):
+                    continue
+                input_tokens = step_entry.get("input_tokens")
+                output_tokens = step_entry.get("output_tokens")
+                if input_tokens is not None and output_tokens is not None:
+                    await db.execute(
+                        pg_insert(TokenUsage)
+                        .values(
+                            id=uuid.uuid4(),
+                            tenant_id=uuid.UUID(envelope.tenant_id),
+                            execution_id=execution_id,
+                            step_id=step_entry.get("step_id", "unknown"),
+                            model=step_entry.get("model", "unknown"),
+                            input_tokens=int(input_tokens),
+                            output_tokens=int(output_tokens),
+                            cost_usd=None,
+                        )
+                        .on_conflict_do_nothing()
+                    )
+
+            # Set execution timing from audit trail
+            starts = [
+                e["started_at"]
+                for e in result.steps_executed
+                if isinstance(e, dict) and "started_at" in e
+            ]
+            ends = [
+                e["completed_at"]
+                for e in result.steps_executed
+                if isinstance(e, dict) and "completed_at" in e
+            ]
+            if starts and ends:
+                t0 = datetime.fromisoformat(min(starts))
+                t1 = datetime.fromisoformat(max(ends))
+                duration_ms = int((t1 - t0).total_seconds() * 1000)
+                await db.execute(
+                    pg_insert(ExecutionModel)
+                    .values(
+                        id=execution_id,
+                        tenant_id=uuid.UUID(envelope.tenant_id),
+                        session_id=envelope.session_id,
+                        workflow_slug=envelope.workflow_slug,
+                        workflow_version=workflow_version,
+                        status="completed",
+                        input_data=envelope.input_data,
+                        output_data=result.final_state,
+                        started_at=t0,
+                        completed_at=t1,
+                        duration_ms=duration_ms,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["id"],
+                        set_={
+                            "status": "completed",
+                            "output_data": result.final_state,
+                            "started_at": t0,
+                            "completed_at": t1,
+                            "duration_ms": duration_ms,
+                        },
+                    )
+                )
 
             await db.commit()
 

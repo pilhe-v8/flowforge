@@ -1,9 +1,34 @@
 """Tests for StreamConsumer — Redis Streams consumer with retry/DLQ logic."""
 
+import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from flowforge.worker.consumer import MessageEnvelope, RetryLater, StreamConsumer
+
+
+# ── AuditLog helpers ──────────────────────────────────────────────────────────
+
+
+class FakeAsyncContextManager:
+    """Async context manager wrapping a fake DB session for use with AsyncSessionLocal."""
+
+    def __init__(self, db_session):
+        self._db = db_session
+
+    async def __aenter__(self):
+        return self._db
+
+    async def __aexit__(self, *args):
+        pass
+
+
+def make_mock_db():
+    """Return an AsyncMock that behaves like an AsyncSession, tracking executed statements."""
+    db = AsyncMock()
+    db.execute = AsyncMock()
+    db.commit = AsyncMock()
+    return db
 
 
 # ── MessageEnvelope.parse ─────────────────────────────────────────────────────
@@ -176,3 +201,74 @@ def test_retry_later_is_exception():
 def test_retry_later_can_be_raised():
     with pytest.raises(RetryLater, match="locked"):
         raise RetryLater("Session locked by another worker")
+
+
+# ── AuditLog.write — token usage ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_audit_log_writes_token_usage():
+    """AuditLog.write() must insert TokenUsage rows when audit trail has token data."""
+    from flowforge.worker.consumer import AuditLog, MessageEnvelope
+    from flowforge.worker.executor import ExecutionResult
+    from flowforge.models import TokenUsage
+    from datetime import datetime, timezone
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    tenant_id = str(uuid.uuid4())
+    execution_id = str(uuid.uuid4())
+    envelope = MessageEnvelope(
+        session_id=str(uuid.uuid4()),
+        workflow_slug="test-wf",
+        tenant_id=tenant_id,
+        input_data={},
+        execution_id=execution_id,
+    )
+    result = ExecutionResult(
+        session_id=envelope.session_id,
+        final_state={},
+        steps_executed=[
+            {
+                "step_id": "greet",
+                "step_name": "Greet",
+                "step_type": "agent",
+                "status": "completed",
+                "model": "mistral-large-latest",
+                "input_tokens": 42,
+                "output_tokens": 17,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "duration_ms": 1234,
+                "input_data": {},
+                "output_data": {},
+            }
+        ],
+    )
+
+    # Track all statements executed against the DB mock
+    executed_statements = []
+
+    db = make_mock_db()
+    db.execute = AsyncMock(side_effect=lambda stmt: executed_statements.append(stmt))
+    ctx = FakeAsyncContextManager(db)
+
+    with patch("flowforge.worker.consumer.AsyncSessionLocal", return_value=ctx):
+        await AuditLog.write(envelope, result, workflow_version=1)
+
+    # Find TokenUsage insert statements among executed statements
+    token_usage_inserts = []
+    for stmt in executed_statements:
+        # pg_insert statements have a 'table' attribute; match by table name
+        if hasattr(stmt, "table") and stmt.table.name == TokenUsage.__table__.name:
+            token_usage_inserts.append(stmt)
+
+    assert len(token_usage_inserts) == 1, (
+        f"Expected 1 TokenUsage insert, got {len(token_usage_inserts)}"
+    )
+
+    # Inspect the values compiled into the INSERT statement
+    insert_values = token_usage_inserts[0].compile(compile_kwargs={"literal_binds": True})
+    insert_str = str(insert_values)
+    assert "42" in insert_str, f"Expected input_tokens=42 in INSERT, got: {insert_str}"
+    assert "17" in insert_str, f"Expected output_tokens=17 in INSERT, got: {insert_str}"
+    assert "mistral-large-latest" in insert_str, f"Expected model in INSERT, got: {insert_str}"
