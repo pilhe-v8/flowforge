@@ -1,36 +1,152 @@
-import { useRef } from 'react';
+import { useState } from 'react';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import { NodeType } from '../../types';
+import { useToolCatalogueStore } from '../../stores/toolCatalogueStore';
+import type { NodeType } from '../../types';
 
-const NODE_TYPES: { type: NodeType; label: string; icon: string; colorClass: string }[] = [
-  { type: 'trigger', label: 'Trigger', icon: '⚡', colorClass: 'bg-purple-50 border-purple-300 hover:bg-purple-100' },
-  { type: 'tool',    label: 'Tool',    icon: '🔧', colorClass: 'bg-green-50 border-green-300 hover:bg-green-100' },
-  { type: 'agent',   label: 'Agent',   icon: '🧠', colorClass: 'bg-orange-50 border-orange-300 hover:bg-orange-100' },
-  { type: 'router',  label: 'Router',  icon: '◆',  colorClass: 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' },
-  { type: 'gate',    label: 'Gate',    icon: '🛡',  colorClass: 'bg-blue-50 border-blue-300 hover:bg-blue-100' },
-  { type: 'output',  label: 'Output',  icon: '📤', colorClass: 'bg-red-50 border-red-300 hover:bg-red-100' },
+const NODE_TYPES = [
+  { type: 'trigger' as NodeType, label: 'Trigger', icon: '⚡', description: 'Workflow entry point' },
+  { type: 'tool'    as NodeType, label: 'Tool',    icon: '🔧', description: 'Call an external tool or MCP server' },
+  { type: 'agent'   as NodeType, label: 'Agent',   icon: '🧠', description: 'Run an LLM-powered agent' },
+  { type: 'router'  as NodeType, label: 'Router',  icon: '◆',  description: 'Branch on a value' },
+  { type: 'gate'    as NodeType, label: 'Gate',    icon: '🛡',  description: 'Apply conditional rules' },
+  { type: 'output'  as NodeType, label: 'Output',  icon: '📤', description: 'Send a result or call an action' },
 ];
 
 export function NodePalette() {
+  const [tab, setTab] = useState<'types' | 'catalogue'>('types');
+  const [search, setSearch] = useState('');
   const addNode = useWorkflowStore(s => s.addNode);
-  const offsetRef = useRef(0);
+  const updateNodeData = useWorkflowStore(s => s.updateNodeData);
+  const nodes = useWorkflowStore(s => s.nodes);
+  const tools = useToolCatalogueStore(s => s.tools);
+  const agents = useToolCatalogueStore(s => s.agents);
+
+  const nextPosition = () => {
+    const offset = (nodes.length % 10) * 30;
+    return { x: 250 + offset, y: 100 + offset };
+  };
+
+  const addToolFromCatalogue = (tool: { uri: string; name: string; slug: string }) => {
+    const pos = nextPosition();
+    addNode('tool', pos);
+    setTimeout(() => {
+      const latestNodes = useWorkflowStore.getState().nodes;
+      const added = latestNodes[latestNodes.length - 1];
+      if (added) updateNodeData(added.id, { toolUri: tool.uri, toolName: tool.name, label: tool.name });
+    }, 0);
+  };
+
+  const addAgentFromCatalogue = (agent: { slug: string; name: string }) => {
+    const pos = nextPosition();
+    addNode('agent', pos);
+    setTimeout(() => {
+      const latestNodes = useWorkflowStore.getState().nodes;
+      const added = latestNodes[latestNodes.length - 1];
+      if (added) updateNodeData(added.id, { agentSlug: agent.slug, label: agent.name });
+    }, 0);
+  };
+
+  const filteredTools = tools.filter((t: { name: string; description?: string }) =>
+    t.name.toLowerCase().includes(search.toLowerCase()) ||
+    (t.description?.toLowerCase() ?? '').includes(search.toLowerCase())
+  );
+  const filteredAgents = agents.filter((a: { name: string }) =>
+    a.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div className="w-44 bg-white border-r p-3 flex flex-col gap-2 overflow-y-auto">
-      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Nodes</h2>
-      {NODE_TYPES.map(({ type, label, icon, colorClass }) => (
-        <button
-          key={type}
-          className={`flex items-center gap-2 border-2 rounded p-2 text-sm cursor-pointer transition-colors ${colorClass}`}
-          onClick={() => {
-            offsetRef.current = (offsetRef.current + 30) % 300;
-            addNode(type, { x: 250 + offsetRef.current, y: 100 + offsetRef.current });
-          }}
-        >
-          <span>{icon}</span>
-          <span>{label}</span>
-        </button>
-      ))}
+    <div className="w-56 bg-white border-r border-gray-200 flex flex-col h-full">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        {(['types', 'catalogue'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2 text-xs font-medium capitalize ${
+              tab === t
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t === 'types' ? 'Node Types' : 'Catalogue'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'types' && (
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {NODE_TYPES.map(({ type, label, icon }) => (
+            <button
+              key={type}
+              onClick={() => addNode(type, nextPosition())}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-gray-50 text-left"
+            >
+              <span>{icon}</span>
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'catalogue' && (
+        <div className="flex-1 overflow-y-auto flex flex-col">
+          <div className="p-2">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-3">
+            {filteredTools.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide py-1">Tools</p>
+                {filteredTools.map((tool: { uri: string; name: string; slug: string; description?: string }) => (
+                  <div key={tool.slug} className="flex items-start justify-between gap-1 py-1">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-800 truncate">🔧 {tool.name}</p>
+                      {tool.description && (
+                        <p className="text-xs text-gray-400 truncate">{tool.description}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => addToolFromCatalogue(tool)}
+                      className="shrink-0 text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                    >
+                      +
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {filteredAgents.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide py-1">Agents</p>
+                {filteredAgents.map((agent: { slug: string; name: string }) => (
+                  <div key={agent.slug} className="flex items-center justify-between gap-1 py-1">
+                    <p className="text-xs font-medium text-gray-800 truncate">🧠 {agent.name}</p>
+                    <button
+                      onClick={() => addAgentFromCatalogue(agent)}
+                      className="shrink-0 text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+                    >
+                      +
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {filteredTools.length === 0 && filteredAgents.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-4">
+                {tools.length === 0 && agents.length === 0
+                  ? 'No tools or agents registered yet.'
+                  : 'No results match your search.'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
