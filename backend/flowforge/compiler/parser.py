@@ -40,6 +40,7 @@ class StepDef:
 
     # Agent fields
     agent_slug: Optional[str] = None
+    system_prompt: Optional[str] = None
     model: Optional[str] = None
     context_mapping: dict[str, str] = field(default_factory=dict)
 
@@ -122,7 +123,8 @@ class WorkflowParser:
                 )
 
         elif raw["type"] == "agent":
-            step.agent_slug = raw["agent"]
+            step.agent_slug = raw.get("agent")
+            step.system_prompt = raw.get("system_prompt")
             step.model = raw.get("model")
             step.context_mapping = raw.get("context", {})
             step.output_vars = raw.get("output", [])

@@ -306,3 +306,41 @@ def test_parse_default_version(parser):
     """When version is not specified, it defaults to 1."""
     result = parser.parse(MINIMAL_YAML)
     assert result.version == 1
+
+
+INLINE_AGENT_YAML = """
+workflow:
+  name: Text Rewriter
+  slug: text-rewriter
+  trigger:
+    type: manual
+    output: [input_data]
+  steps:
+    - id: rewrite
+      name: Rewrite
+      type: agent
+      system_prompt: "You are a writing assistant. Rewrite to be concise."
+      model: default
+      context:
+        text: "{{trigger.input_data}}"
+      output: [reply]
+"""
+
+
+def test_parse_inline_agent_system_prompt(parser):
+    """system_prompt field should be parsed from inline agent YAML (no agent slug)."""
+    result = parser.parse(INLINE_AGENT_YAML)
+    step = result.steps[0]
+    assert step.step_type == "agent"
+    assert step.system_prompt == "You are a writing assistant. Rewrite to be concise."
+    assert step.agent_slug is None
+    assert step.output_vars == ["reply"]
+    assert step.model == "default"
+
+
+def test_parse_agent_slug_still_works(parser):
+    """Traditional agent slug parsing still works alongside system_prompt."""
+    result = parser.parse(FULL_EXAMPLE_YAML)
+    step = result.steps[4]  # tech_diagnosis
+    assert step.agent_slug == "tech-support"
+    assert step.system_prompt is None
