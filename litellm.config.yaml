@@ -1,0 +1,26 @@
+# LiteLLM Proxy configuration
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+
+model_list:
+  # Primary: Mistral
+  - model_name: default
+    litellm_params:
+      model: mistral/mistral-large-latest
+      api_key: os.environ/MISTRAL_API_KEY
+
+  # Fallback: Azure OpenAI
+  - model_name: azure-fallback
+    litellm_params:
+      model: azure/gpt-4o
+      api_key: os.environ/AZURE_OPENAI_API_KEY
+      api_base: os.environ/AZURE_OPENAI_API_BASE
+      api_version: "2024-02-01"
+
+router_settings:
+  # Automatically failover from default → azure-fallback on error
+  fallbacks: [{"default": ["azure-fallback"]}]
+  num_retries: 3
+  retry_after: 1
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
