@@ -25,6 +25,14 @@ from flowforge.models import (
 router = APIRouter(prefix="/executions", tags=["executions"])
 settings = get_settings()
 
+COST_TABLE = {
+    "mistral-large-latest": {"input": 0.003, "output": 0.009},
+    "default": {"input": 0.003, "output": 0.009},
+    "gpt-4o": {"input": 0.005, "output": 0.015},
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "azure-fallback": {"input": 0.005, "output": 0.015},
+}
+
 
 def _get_redis():
     return aioredis.from_url(settings.redis_url)
@@ -160,13 +168,6 @@ async def get_execution(
     total_input = sum(t.input_tokens for t in token_rows)
     total_output = sum(t.output_tokens for t in token_rows)
 
-    COST_TABLE = {
-        "mistral-large-latest": {"input": 0.003, "output": 0.009},
-        "default": {"input": 0.003, "output": 0.009},
-        "gpt-4o": {"input": 0.005, "output": 0.015},
-        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-        "azure-fallback": {"input": 0.005, "output": 0.015},
-    }
     estimated_cost = sum(
         t.input_tokens / 1000 * COST_TABLE.get(t.model, COST_TABLE["default"])["input"]
         + t.output_tokens / 1000 * COST_TABLE.get(t.model, COST_TABLE["default"])["output"]

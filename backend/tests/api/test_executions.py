@@ -10,7 +10,14 @@ from fastapi.testclient import TestClient
 from flowforge.main import app
 from flowforge.api.deps import get_current_user, get_tenant_id
 from flowforge.db.session import get_db
-from flowforge.models import Execution, ExecutionStep, Session, Workflow, WorkflowVersion
+from flowforge.models import (
+    Execution,
+    ExecutionStep,
+    Session,
+    TokenUsage,
+    Workflow,
+    WorkflowVersion,
+)
 
 TENANT_ID = str(uuid.uuid4())
 FAKE_USER = {"sub": "user-1", "tenant_id": TENANT_ID, "role": "editor"}
@@ -294,11 +301,19 @@ def client(execution_with_steps):
     execution, step = execution_with_steps
     db = make_mock_db()
 
+    # Build a mock TokenUsage row matching the step metadata
+    token_row = MagicMock(spec=TokenUsage)
+    token_row.model = "gpt-4o"
+    token_row.input_tokens = 10
+    token_row.output_tokens = 20
+
     # Three db.execute calls: 1) get execution, 2) get token_rows, 3) get steps
     db.execute = AsyncMock(
         side_effect=[
             MagicMock(scalar_one_or_none=MagicMock(return_value=execution)),
-            MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))),
+            MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[token_row])))
+            ),
             MagicMock(
                 scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[step])))
             ),
@@ -323,3 +338,14 @@ def test_get_execution_includes_enriched_fields(client, execution_with_steps):
     assert "input_tokens" in step
     assert "output_tokens" in step
     assert "duration_ms" in step
+
+    # Step-level value assertions
+    assert step["model"] == "gpt-4o"
+    assert step["input_tokens"] == 10
+    assert step["output_tokens"] == 20
+
+    # Top-level token and cost assertions
+    assert data["total_input_tokens"] == 10
+    assert data["total_output_tokens"] == 20
+    assert "estimated_cost_usd" in data
+    assert data["estimated_cost_usd"] >= 0
