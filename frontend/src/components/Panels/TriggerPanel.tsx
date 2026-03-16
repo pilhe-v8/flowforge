@@ -10,7 +10,7 @@ const TRIGGER_TYPES: { value: TriggerType; label: string }[] = [
   { value: 'email_received', label: 'Email Received' },
 ];
 
-// Fix 4: Default output vars per trigger type
+// Default output vars per trigger type — applied automatically on type change
 const TRIGGER_OUTPUTS: Record<string, string[]> = {
   email_received: ['sender', 'subject', 'body', 'attachments', 'received_at'],
   webhook: ['payload', 'headers', 'received_at'],
@@ -56,16 +56,6 @@ export function TriggerPanel({ nodeId }: Props) {
         </select>
       </div>
 
-      <div className="space-y-1">
-        <label className="text-xs text-gray-500">Output Variables (comma-separated)</label>
-        <input
-          className="w-full border rounded px-2 py-1 text-sm"
-          value={d.outputVars.join(', ')}
-          onChange={e => update({ outputVars: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="e.g. from, subject, body"
-        />
-      </div>
-
       {d.triggerType === 'schedule' && (
         <div className="space-y-1">
           <label className="text-xs text-gray-500">Cron Expression</label>
@@ -74,18 +64,6 @@ export function TriggerPanel({ nodeId }: Props) {
             value={d.triggerConfig?.cron ?? ''}
             onChange={e => update({ triggerConfig: { ...d.triggerConfig, cron: e.target.value } })}
             placeholder="e.g. 0 9 * * 1-5"
-          />
-        </div>
-      )}
-
-      {d.triggerType === 'webhook' && (
-        <div className="space-y-1">
-          <label className="text-xs text-gray-500">Webhook Path</label>
-          <input
-            className="w-full border rounded px-2 py-1 text-sm"
-            value={d.triggerConfig?.path ?? ''}
-            onChange={e => update({ triggerConfig: { ...d.triggerConfig, path: e.target.value } })}
-            placeholder="/webhook/my-workflow"
           />
         </div>
       )}
