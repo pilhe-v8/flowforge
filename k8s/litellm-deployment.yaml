@@ -52,12 +52,24 @@ spec:
     spec:
       containers:
         - name: litellm
-          image: ghcr.io/berriai/litellm:main-latest
+          image: ghcr.io/berriai/litellm:v1.72.0
           args:
             - "--config"
             - "/app/config/litellm.config.yaml"
           ports:
             - containerPort: 4000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           env:
             - name: MISTRAL_API_KEY
               valueFrom:
@@ -87,7 +99,7 @@ spec:
             httpGet:
               path: /health/liveliness
               port: 4000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 30
           readinessProbe:
             httpGet:

@@ -11,4 +11,3 @@ data:
   FLOWFORGE_GRAPH_CACHE_TTL: "300"
   FLOWFORGE_ALLOWED_ORIGINS: '["https://flowforge.local","http://localhost:5173"]'
   FLOWFORGE_LITELLM_URL: http://litellm:4000
-  FLOWFORGE_LITELLM_MASTER_KEY: sk-flowforge-local
