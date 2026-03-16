@@ -1,5 +1,7 @@
-import asyncio
+import json
+import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +16,8 @@ from flowforge.worker.lock import SessionLock
 from flowforge.worker.executor import Executor
 from flowforge.worker.session_manager import SessionManager
 from flowforge.worker.graph_cache import GraphCache
+
+logger = logging.getLogger(__name__)
 
 
 class RetryLater(Exception):
@@ -44,8 +48,6 @@ class MessageEnvelope:
             if not (k.startswith(b"_") if isinstance(k, bytes) else k.startswith("_"))
         }
         # input_data may be a JSON-encoded field; if missing, use empty dict
-        import json
-
         raw_input = data.get(b"input_data", data.get("input_data", "{}"))
         if isinstance(raw_input, bytes):
             raw_input = raw_input.decode()
@@ -66,26 +68,30 @@ class AuditLog:
     """Writes execution audit records to PostgreSQL."""
 
     @staticmethod
-    async def write(envelope: MessageEnvelope, result) -> None:
+    async def write(envelope: MessageEnvelope, result, workflow_version: int = 0) -> None:
         async with AsyncSessionLocal() as db:
             # Upsert the execution row
             execution_id = uuid.uuid4()
             now = datetime.utcnow()
 
-            exec_stmt = (
-                pg_insert(ExecutionModel)
-                .values(
-                    id=execution_id,
-                    tenant_id=envelope.tenant_id,
-                    session_id=envelope.session_id,
-                    workflow_slug=envelope.workflow_slug,
-                    workflow_version=0,
-                    status="completed",
-                    input_data=envelope.input_data,
-                    output_data=result.final_state,
-                    completed_at=now,
-                )
-                .on_conflict_do_nothing()
+            exec_insert = pg_insert(ExecutionModel).values(
+                id=execution_id,
+                tenant_id=envelope.tenant_id,
+                session_id=envelope.session_id,
+                workflow_slug=envelope.workflow_slug,
+                workflow_version=workflow_version,
+                status="completed",
+                input_data=envelope.input_data,
+                output_data=result.final_state,
+                completed_at=now,
+            )
+            exec_stmt = exec_insert.on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "status": exec_insert.excluded.status,
+                    "output_data": exec_insert.excluded.output_data,
+                    "completed_at": exec_insert.excluded.completed_at,
+                },
             )
             await db.execute(exec_stmt)
 
@@ -120,6 +126,7 @@ class StreamConsumer:
         self.consumer_id = f"worker-{os.getpid()}-{uuid.uuid4().hex[:8]}"
         self.stream_key = "flowforge:messages"
         self.message_count = 0
+        self.last_processed_at: float = time.monotonic()
 
     async def setup(self):
         try:
@@ -146,7 +153,9 @@ class StreamConsumer:
                         await self.process_message(data)
                         await self.redis.xack(self.stream_key, self.group, msg_id)
                         self.message_count += 1
-                    except RetryLater:
+                        self.last_processed_at = time.monotonic()
+                    except RetryLater as e:
+                        logger.warning("RetryLater for message: %s", e)
                         pass
                     except Exception as e:
                         await self.handle_failure(msg_id, data, e)
@@ -157,16 +166,21 @@ class StreamConsumer:
             if not lock.acquired:
                 raise RetryLater("Session locked by another worker")
 
-            session = await SessionManager.load(envelope.session_id)
-            graph = await GraphCache.get_or_compile(
+            session = await SessionManager.load(
+                envelope.session_id,
+                tenant_id=envelope.tenant_id,
+                workflow_slug=envelope.workflow_slug,
+            )
+            graph, workflow_version = await GraphCache.get_or_compile(
                 self.redis, envelope.workflow_slug, envelope.tenant_id
             )
             result = await Executor.run(graph, session, envelope.input_data)
             await SessionManager.save(session)
-            await AuditLog.write(envelope, result)
+            await AuditLog.write(envelope, result, workflow_version=workflow_version)
 
     async def handle_failure(self, msg_id, data, error):
         retry_count = int(data.get(b"_retries", 0)) + 1
+        logger.error("Message processing failed (retry %d): %s", retry_count, error, exc_info=True)
         if retry_count >= 3:
             await self.move_to_dlq(msg_id, data, error)
             await self.redis.xack(self.stream_key, self.group, msg_id)

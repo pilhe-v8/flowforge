@@ -55,6 +55,30 @@ async def test_load_returns_new_session_when_not_found():
 
 
 @pytest.mark.asyncio
+async def test_load_new_session_propagates_tenant_id():
+    """SessionManager.load should set tenant_id on a new Session when not found in DB."""
+    db = make_db_session(scalar_result=None)
+    ctx = FakeAsyncContextManager(db)
+
+    with patch("flowforge.worker.session_manager.AsyncSessionLocal", return_value=ctx):
+        session = await SessionManager.load("new-session", tenant_id="tenant-xyz")
+
+    assert session.tenant_id == "tenant-xyz"
+
+
+@pytest.mark.asyncio
+async def test_load_new_session_propagates_workflow_slug():
+    """SessionManager.load should set workflow_slug on a new Session when not found in DB."""
+    db = make_db_session(scalar_result=None)
+    ctx = FakeAsyncContextManager(db)
+
+    with patch("flowforge.worker.session_manager.AsyncSessionLocal", return_value=ctx):
+        session = await SessionManager.load("new-session", workflow_slug="my-workflow")
+
+    assert session.workflow_slug == "my-workflow"
+
+
+@pytest.mark.asyncio
 async def test_load_returns_session_from_db_row():
     """SessionManager.load should populate Session from the DB model when found."""
     model = make_mock_model(
@@ -76,6 +100,21 @@ async def test_load_returns_session_from_db_row():
 
 
 @pytest.mark.asyncio
+async def test_load_existing_session_propagates_workflow_slug():
+    """SessionManager.load should set workflow_slug on an existing Session from the passed arg."""
+    model = make_mock_model(session_id="sess-existing", tenant_id="t-abc")
+    db = make_db_session(scalar_result=model)
+    ctx = FakeAsyncContextManager(db)
+
+    with patch("flowforge.worker.session_manager.AsyncSessionLocal", return_value=ctx):
+        session = await SessionManager.load(
+            "sess-existing", tenant_id="t-abc", workflow_slug="wf-slug"
+        )
+
+    assert session.workflow_slug == "wf-slug"
+
+
+@pytest.mark.asyncio
 async def test_save_calls_upsert_with_correct_values():
     """SessionManager.save should call an INSERT ... ON CONFLICT DO UPDATE."""
     db = AsyncMock()
@@ -88,6 +127,7 @@ async def test_save_calls_upsert_with_correct_values():
         state={"result": "done"},
         step_count=10,
         tenant_id="tenant-save",
+        workflow_slug="my-wf",
         updated_at=datetime(2024, 1, 1, 12, 0, 0),
     )
 
@@ -119,4 +159,5 @@ def test_session_dataclass_defaults():
     """Session dataclass should have sensible defaults for optional fields."""
     s = Session(id="x", state={}, step_count=0)
     assert s.tenant_id == ""
+    assert s.workflow_slug == ""
     assert s.updated_at is None

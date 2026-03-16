@@ -17,6 +17,7 @@ class Session:
     state: dict
     step_count: int
     tenant_id: str = ""
+    workflow_slug: str = ""
     updated_at: Optional[datetime] = None
 
 
@@ -24,17 +25,24 @@ class SessionManager:
     """Handles loading and saving workflow sessions from/to PostgreSQL."""
 
     @staticmethod
-    async def load(session_id: str) -> Session:
+    async def load(session_id: str, tenant_id: str = "", workflow_slug: str = "") -> Session:
         async with AsyncSessionLocal() as db:
             row = await db.execute(select(SessionModel).where(SessionModel.id == session_id))
             model = row.scalar_one_or_none()
             if model is None:
-                return Session(id=session_id, state={}, step_count=0)
+                return Session(
+                    id=session_id,
+                    state={},
+                    step_count=0,
+                    tenant_id=tenant_id,
+                    workflow_slug=workflow_slug,
+                )
             return Session(
                 id=str(model.id),
                 state=model.workflow_state,
                 step_count=model.step_count or 0,
                 tenant_id=str(model.tenant_id),
+                workflow_slug=workflow_slug,
             )
 
     @staticmethod
@@ -44,8 +52,8 @@ class SessionManager:
                 pg_insert(SessionModel)
                 .values(
                     id=session.id,
-                    tenant_id=session.tenant_id or "00000000-0000-0000-0000-000000000000",
-                    workflow_slug="",
+                    tenant_id=session.tenant_id,
+                    workflow_slug=session.workflow_slug,
                     workflow_version=0,
                     workflow_state=session.state,
                     step_count=session.step_count,

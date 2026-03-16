@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from aiohttp import web
 
@@ -14,6 +15,9 @@ async def health_handler(request):
             "status": "healthy",
             "consumer_id": consumer.consumer_id if consumer else "not started",
             "messages_processed": consumer.message_count if consumer else 0,
+            "last_processed_ago_seconds": (
+                time.monotonic() - consumer.last_processed_at if consumer else None
+            ),
         }
     )
 

@@ -1,6 +1,6 @@
 """Tests for GraphCache and WorkflowRepo."""
 
-import pickle
+import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,40 +28,46 @@ def make_db_with_result(result):
 
 
 class TestGraphCache:
-    @pytest.mark.asyncio
-    async def test_cache_hit_returns_deserialized_graph(self):
-        """get_or_compile should return the pickle-deserialized graph on cache hit."""
-        from flowforge.worker.graph_cache import GraphCache
+    def setup_method(self):
+        """Clear the in-process cache before each test."""
+        from flowforge.worker import graph_cache
 
-        # Use a simple picklable object as a fake graph
+        graph_cache._graph_cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_returns_cached_graph(self):
+        """get_or_compile should return cached (graph, version) on cache hit."""
+        from flowforge.worker.graph_cache import GraphCache, _graph_cache
+
         fake_graph = {"nodes": ["trigger", "step1"], "compiled": True}
-        cached_bytes = pickle.dumps(fake_graph)
+        cache_key = "t-001:my-wf"
+        _graph_cache[cache_key] = (fake_graph, 42, time.monotonic() + 300)
 
         redis_client = AsyncMock()
-        redis_client.get = AsyncMock(return_value=cached_bytes)
 
-        result = await GraphCache.get_or_compile(redis_client, "my-wf", "t-001")
+        result_graph, result_version = await GraphCache.get_or_compile(
+            redis_client, "my-wf", "t-001"
+        )
 
-        redis_client.get.assert_awaited_once_with("flowforge:graph:t-001:my-wf")
-        assert result == fake_graph
+        # Redis should NOT be called at all (in-process cache only)
+        redis_client.get.assert_not_called()
+        assert result_graph == fake_graph
+        assert result_version == 42
 
     @pytest.mark.asyncio
     async def test_cache_miss_compiles_and_caches(self):
-        """get_or_compile should compile from YAML and store in Redis on cache miss."""
-        from flowforge.worker.graph_cache import GraphCache
+        """get_or_compile should compile from YAML and store in in-process cache on miss."""
+        from flowforge.worker.graph_cache import GraphCache, _graph_cache
 
-        # Use a simple picklable object as a fake graph
         fake_graph = {"nodes": ["trigger"], "compiled": True}
         fake_compilation = MagicMock()
         fake_compilation.graph = fake_graph
 
         redis_client = AsyncMock()
-        redis_client.get = AsyncMock(return_value=None)
-        redis_client.setex = AsyncMock()
 
         with patch(
             "flowforge.worker.graph_cache.WorkflowRepo.get_active_yaml",
-            new=AsyncMock(return_value="workflow: yaml"),
+            new=AsyncMock(return_value=("workflow: yaml", 7)),
         ):
             with patch(
                 "flowforge.worker.graph_cache.Compiler",
@@ -70,17 +76,20 @@ class TestGraphCache:
                 mock_compiler_instance.compile.return_value = fake_compilation
                 MockCompiler.return_value = mock_compiler_instance
 
-                result = await GraphCache.get_or_compile(redis_client, "slug", "tenant-1")
+                result_graph, result_version = await GraphCache.get_or_compile(
+                    redis_client, "slug", "tenant-1"
+                )
 
-        # Should have cached the pickled graph
-        redis_client.setex.assert_awaited_once()
-        args = redis_client.setex.call_args[0]
-        assert args[0] == "flowforge:graph:tenant-1:slug"
-        assert args[1] == GraphCache.CACHE_TTL
-        assert pickle.loads(args[2]) == fake_graph
+        # Should have stored in the in-process cache
+        assert "tenant-1:slug" in _graph_cache
+        cached_graph, cached_version, expires_at = _graph_cache["tenant-1:slug"]
+        assert cached_graph == fake_graph
+        assert cached_version == 7
+        assert expires_at > time.monotonic()
 
-        # Should return the compiled graph
-        assert result == fake_graph
+        # Should return the compiled graph and version
+        assert result_graph == fake_graph
+        assert result_version == 7
 
     @pytest.mark.asyncio
     async def test_cache_miss_fetches_yaml_from_repo(self):
@@ -88,14 +97,12 @@ class TestGraphCache:
         from flowforge.worker.graph_cache import GraphCache
 
         redis_client = AsyncMock()
-        redis_client.get = AsyncMock(return_value=None)
-        redis_client.setex = AsyncMock()
 
         fake_graph = {"nodes": [], "compiled": True}
         fake_compilation = MagicMock()
         fake_compilation.graph = fake_graph
 
-        mock_get_yaml = AsyncMock(return_value="workflow: def")
+        mock_get_yaml = AsyncMock(return_value=("workflow: def", 3))
 
         with patch("flowforge.worker.graph_cache.WorkflowRepo.get_active_yaml", mock_get_yaml):
             with patch("flowforge.worker.graph_cache.Compiler") as MockCompiler:
@@ -103,6 +110,35 @@ class TestGraphCache:
                 await GraphCache.get_or_compile(redis_client, "wf-slug", "t-id")
 
         mock_get_yaml.assert_awaited_once_with("wf-slug", "t-id")
+
+    @pytest.mark.asyncio
+    async def test_expired_cache_entry_is_recompiled(self):
+        """get_or_compile should recompile when a cache entry has expired."""
+        from flowforge.worker.graph_cache import GraphCache, _graph_cache
+
+        old_graph = {"nodes": ["old"], "compiled": True}
+        cache_key = "t-exp:wf-exp"
+        # Insert an already-expired entry
+        _graph_cache[cache_key] = (old_graph, 1, time.monotonic() - 1)
+
+        new_graph = {"nodes": ["new"], "compiled": True}
+        fake_compilation = MagicMock()
+        fake_compilation.graph = new_graph
+
+        redis_client = AsyncMock()
+
+        with patch(
+            "flowforge.worker.graph_cache.WorkflowRepo.get_active_yaml",
+            new=AsyncMock(return_value=("workflow: new", 2)),
+        ):
+            with patch("flowforge.worker.graph_cache.Compiler") as MockCompiler:
+                MockCompiler.return_value.compile.return_value = fake_compilation
+                result_graph, result_version = await GraphCache.get_or_compile(
+                    redis_client, "wf-exp", "t-exp"
+                )
+
+        assert result_graph == new_graph
+        assert result_version == 2
 
 
 # ── WorkflowRepo ──────────────────────────────────────────────────────────────
@@ -122,20 +158,22 @@ class TestWorkflowRepo:
                 await WorkflowRepo.get_active_yaml("missing-wf", "t-001")
 
     @pytest.mark.asyncio
-    async def test_get_active_yaml_returns_yaml_definition(self):
-        """get_active_yaml should return the yaml_definition from the model."""
+    async def test_get_active_yaml_returns_yaml_definition_and_version(self):
+        """get_active_yaml should return (yaml_definition, version) tuple from the model."""
         from flowforge.worker.graph_cache import WorkflowRepo
 
         model = MagicMock()
         model.yaml_definition = "name: test-workflow\nsteps: []"
+        model.version = 5
 
         db = make_db_with_result(model)
         ctx = FakeAsyncContextManager(db)
 
         with patch("flowforge.worker.graph_cache.AsyncSessionLocal", return_value=ctx):
-            result = await WorkflowRepo.get_active_yaml("test-wf", "t-abc")
+            yaml_def, version = await WorkflowRepo.get_active_yaml("test-wf", "t-abc")
 
-        assert result == "name: test-workflow\nsteps: []"
+        assert yaml_def == "name: test-workflow\nsteps: []"
+        assert version == 5
 
     @pytest.mark.asyncio
     async def test_get_active_yaml_error_message_contains_slug_and_tenant(self):
