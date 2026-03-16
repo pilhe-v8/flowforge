@@ -1,0 +1,17 @@
+workflow:
+  name: E2E Hello World
+  slug: e2e-hello-world
+  description: Minimal E2E test workflow — one agent step calling the LLM
+
+  trigger:
+    type: manual
+    output: [message]
+
+  steps:
+    - id: greet
+      name: Greet
+      type: agent
+      agent: reply-drafter
+      context:
+        message: "{{trigger.message}}"
+      output: [reply]
