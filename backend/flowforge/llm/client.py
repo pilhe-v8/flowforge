@@ -1,6 +1,6 @@
-"""LLM client — thin wrapper around litellm for async chat completions."""
+"""LLM client — calls the LiteLLM Proxy via the OpenAI-compatible HTTP API."""
 
-import litellm
+import openai
 from dataclasses import dataclass
 
 
@@ -15,9 +15,26 @@ class LLMResponse:
 
 
 class LLMClient:
-    """Async LLM client backed by litellm (supports OpenAI, Anthropic, etc.)."""
+    """Async LLM client that calls a LiteLLM Proxy endpoint.
 
-    def __init__(self, default_model: str = "gpt-4o-mini"):
+    The proxy is OpenAI-API-compatible, so we use the standard openai SDK
+    pointed at the proxy's base URL. The proxy handles provider routing,
+    retries, and fallback — this client stays credential-free.
+
+    Args:
+        base_url:      Full URL of the LiteLLM Proxy, e.g. ``http://litellm:4000``.
+        api_key:       LiteLLM master key (set in the proxy's general_settings).
+        default_model: Virtual model name declared in ``litellm.config.yaml``.
+                       Defaults to ``"default"`` (Mistral primary → Azure fallback).
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:4000",
+        api_key: str = "sk-flowforge-local",
+        default_model: str = "default",
+    ):
+        self._client = openai.AsyncOpenAI(base_url=base_url, api_key=api_key)
         self.default_model = default_model
 
     async def chat(
@@ -25,22 +42,22 @@ class LLMClient:
         messages: list[dict],
         model: str | None = None,
     ) -> LLMResponse:
-        """Send a chat completion request and return an :class:`LLMResponse`.
+        """Send a chat completion request via the LiteLLM Proxy.
 
         Args:
-            messages: OpenAI-style message list, e.g.
-                      [{"role": "system", "content": "..."}, ...]
-            model:    Override the default model for this request.
+            messages: OpenAI-style message list.
+            model:    Override the virtual model name for this request.
+                      Must match a ``model_name`` in ``litellm.config.yaml``.
         """
-        model = model or self.default_model
-        response = await litellm.acompletion(
-            model=model,
+        target_model = model or self.default_model
+        response = await self._client.chat.completions.create(
+            model=target_model,
             messages=messages,
             temperature=0.3,
         )
         return LLMResponse(
             content=response.choices[0].message.content,
-            model=model,
+            model=target_model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
         )
