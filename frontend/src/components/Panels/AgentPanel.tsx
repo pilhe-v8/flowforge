@@ -1,15 +1,17 @@
 import { useWorkflowStore } from '../../stores/workflowStore';
-import { useToolCatalogueStore } from '../../stores/toolCatalogueStore';
+import { useModelsStore } from '../../stores/modelsStore';
 import { AgentNodeData } from '../../types';
 import { VariableSelector } from '../shared/VariableSelector';
 import { useAvailableVariables } from '../../hooks/useAvailableVariables';
 
 interface Props { nodeId: string }
 
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
+
 export function AgentPanel({ nodeId }: Props) {
   const nodes = useWorkflowStore(s => s.nodes);
   const updateNodeData = useWorkflowStore(s => s.updateNodeData);
-  const agents = useToolCatalogueStore(s => s.agents);
+  const models = useModelsStore(s => s.models);
   const node = nodes.find(n => n.id === nodeId);
   const availableVars = useAvailableVariables(nodeId);
 
@@ -49,27 +51,26 @@ export function AgentPanel({ nodeId }: Props) {
       </div>
 
       <div className="space-y-1">
-        <label className="text-xs text-gray-500">Agent Profile</label>
-        <select
-          className="w-full border rounded px-2 py-1 text-sm"
-          value={d.agentSlug}
-          onChange={e => update({ agentSlug: e.target.value })}
-        >
-          <option value="">Select agent...</option>
-          {agents.map(a => (
-            <option key={a.slug} value={a.slug}>{a.name}</option>
-          ))}
-        </select>
+        <label className="text-xs text-gray-500">System Prompt</label>
+        <textarea
+          className="w-full border rounded px-2 py-1 text-sm h-24 resize-none"
+          value={d.systemPrompt ?? DEFAULT_SYSTEM_PROMPT}
+          onChange={e => update({ systemPrompt: e.target.value })}
+          placeholder="You are a helpful assistant."
+        />
       </div>
 
       <div className="space-y-1">
-        <label className="text-xs text-gray-500">Model Override (optional)</label>
-        <input
+        <label className="text-xs text-gray-500">Model</label>
+        <select
           className="w-full border rounded px-2 py-1 text-sm"
-          value={d.modelOverride ?? ''}
-          onChange={e => update({ modelOverride: e.target.value || undefined })}
-          placeholder="e.g. gpt-4o"
-        />
+          value={d.modelOverride ?? 'default'}
+          onChange={e => update({ modelOverride: e.target.value })}
+        >
+          {models.map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-2">
@@ -97,15 +98,7 @@ export function AgentPanel({ nodeId }: Props) {
         <button onClick={addContextKey} className="text-blue-500 text-xs hover:underline">+ Add Context</button>
       </div>
 
-      <div className="space-y-1">
-        <label className="text-xs text-gray-500">Output Variables (comma-separated)</label>
-        <input
-          className="w-full border rounded px-2 py-1 text-sm"
-          value={d.outputVars.join(', ')}
-          onChange={e => update({ outputVars: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-          placeholder="e.g. response, intent"
-        />
-      </div>
+      <div className="text-xs text-gray-400 italic">Output: reply</div>
     </div>
   );
 }

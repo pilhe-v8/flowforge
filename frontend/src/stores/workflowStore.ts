@@ -19,7 +19,7 @@ function makeDefaultNodeData(type: NodeType, id: string): NodeData {
     case 'tool':
       return { stepId, label: 'Tool', toolUri: '', inputMapping: {}, outputVars: [] } as ToolNodeData;
     case 'agent':
-      return { stepId, label: 'Agent', agentSlug: '', context: {}, outputVars: [] } as AgentNodeData;
+      return { stepId, label: 'Agent', systemPrompt: 'You are a helpful assistant.', context: {}, outputVars: ['reply'] } as AgentNodeData;
     case 'router':
       return { stepId, label: 'Router', routeOn: '', routes: [], defaultTarget: '' } as RouterNodeData;
     case 'gate':

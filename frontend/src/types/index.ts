@@ -46,10 +46,11 @@ export interface ToolNodeData {
 export interface AgentNodeData {
   stepId: string;
   label: string;
-  agentSlug: string;
-  modelOverride?: string;
+  agentSlug?: string;           // optional — backward compat with profile-based agents
+  systemPrompt: string;         // inline system prompt (new)
+  modelOverride?: string;       // populated from dropdown, not free text
   context: Record<string, string>;
-  outputVars: string[];
+  outputVars: string[];         // always ["reply"] for inline agents — kept for compiler
   [key: string]: unknown;
 }
 
