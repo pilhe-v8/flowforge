@@ -29,6 +29,7 @@ dependencies = [
     "aiohttp>=3.9",
     "structlog>=24.1",
     "prometheus-client>=0.20",
+    "prometheus-fastapi-instrumentator>=6.1",
 ]
 
 [project.optional-dependencies]

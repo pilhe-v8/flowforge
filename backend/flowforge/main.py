@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from flowforge.api import workflows, tools, agents, executions, tenants, webhooks, ws, templates
 
 app = FastAPI(title="FlowForge", version="0.1.0")
@@ -19,6 +20,8 @@ app.include_router(tenants.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(ws.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
+
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/health")

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flowforge-config
+  namespace: flowforge
+data:
+  REDIS_URL: redis://redis:6379
+  QDRANT_URL: http://qdrant:6333
+  LOG_LEVEL: INFO
+  WORKER_HEALTH_PORT: "8081"
+  GRAPH_CACHE_TTL: "300"
