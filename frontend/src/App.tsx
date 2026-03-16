@@ -11,6 +11,17 @@ import { useWorkflowStore } from './stores/workflowStore';
 import { useToolCatalogueStore } from './stores/toolCatalogueStore';
 
 export default function App() {
+  // Dev auth bootstrap — auto-set JWT if not present (local dev only)
+  useEffect(() => {
+    if (!localStorage.getItem('flowforge_token')) {
+      const devToken = import.meta.env.VITE_DEV_JWT as string | undefined;
+      if (devToken) {
+        localStorage.setItem('flowforge_token', devToken);
+        window.location.reload();
+      }
+    }
+  }, []);
+
   const nodes = useWorkflowStore(s => s.nodes);
   const edges = useWorkflowStore(s => s.edges);
   const setNodes = useWorkflowStore(s => s.setNodes);
