@@ -1,0 +1,190 @@
+workflow:
+  name: Customer Service
+  slug: customer-service
+  version: 1
+  description: Routes incoming customer emails through classification, lookup, and response
+
+  trigger:
+    type: email_received
+    config:
+      mailbox: "support@acme.com"
+    output: [sender, subject, body, attachments, received_at]
+
+  steps:
+    - id: lookup_customer
+      name: Look Up Customer
+      type: tool
+      tool: "mcp://crm-service:9000/customer-lookup"
+      input:
+        email: "{{trigger.sender}}"
+      output: [customer_id, name, tier, past_tickets]
+      next: sentiment
+
+    - id: sentiment
+      name: Detect Sentiment
+      type: tool
+      tool: "http://ml-services:8080/sentiment"
+      input:
+        text: "{{trigger.body}}"
+      output: [sentiment, sentiment_confidence]
+      next: classify
+
+    - id: classify
+      name: Classify Intent
+      type: tool
+      tool: "mcp://ml-services:9001/intent-classifier"
+      input:
+        text: "{{trigger.body}}"
+      output: [intent, intent_confidence]
+      fallback:
+        when: "intent_confidence < 0.85"
+        agent: classifier
+        input:
+          text: "{{trigger.body}}"
+        output: [intent]
+      next: route
+
+    - id: route
+      name: Route by Intent
+      type: router
+      on: "{{classify.intent}}"
+      routes:
+        password_reset: handle_password
+        order_status: lookup_order
+        billing: fetch_invoice
+        technical: tech_diagnosis
+        complaint: escalate
+      default: general_response
+
+    - id: handle_password
+      name: Handle Password Reset
+      type: tool
+      tool: "mcp://auth-service:9002/generate-reset-link"
+      input:
+        customer_id: "{{lookup_customer.customer_id}}"
+      output: [reset_link, expires_in]
+      next: fill_password_template
+
+    - id: fill_password_template
+      name: Fill Password Reset Template
+      type: deterministic
+      operation: render_template
+      template: password_reset
+      template_vars:
+        name: "{{lookup_customer.name}}"
+        reset_link: "{{handle_password.reset_link}}"
+        expires_in: "{{handle_password.expires_in}}"
+      output: [draft_response]
+      next: quality_gate
+
+    - id: lookup_order
+      name: Look Up Order
+      type: tool
+      tool: "mcp://oms:9003/order-status"
+      input:
+        customer_id: "{{lookup_customer.customer_id}}"
+      output: [order_id, status, eta]
+      next: fill_order_template
+
+    - id: fill_order_template
+      name: Fill Order Status Template
+      type: deterministic
+      operation: render_template
+      template: order_status
+      template_vars:
+        name: "{{lookup_customer.name}}"
+        order_id: "{{lookup_order.order_id}}"
+        status: "{{lookup_order.status}}"
+        eta: "{{lookup_order.eta}}"
+      output: [draft_response]
+      next: quality_gate
+
+    - id: fetch_invoice
+      name: Fetch Invoice
+      type: tool
+      tool: "mcp://billing:9004/invoice-lookup"
+      input:
+        customer_id: "{{lookup_customer.customer_id}}"
+      output: [invoice_id, amount, due_date]
+      next: fill_billing_template
+
+    - id: fill_billing_template
+      name: Fill Billing Template
+      type: deterministic
+      operation: render_template
+      template: billing_response
+      template_vars:
+        name: "{{lookup_customer.name}}"
+        invoice_id: "{{fetch_invoice.invoice_id}}"
+        amount: "{{fetch_invoice.amount}}"
+        due_date: "{{fetch_invoice.due_date}}"
+      output: [draft_response]
+      next: quality_gate
+
+    - id: tech_diagnosis
+      name: Technical Diagnosis
+      type: agent
+      agent: tech-support
+      model: gpt-4o
+      context:
+        issue: "{{trigger.body}}"
+        customer_name: "{{lookup_customer.name}}"
+        tier: "{{lookup_customer.tier}}"
+        history: "{{lookup_customer.past_tickets}}"
+      output: [resolution]
+      next: draft_reply
+
+    - id: general_response
+      name: General Response
+      type: agent
+      agent: reply-drafter
+      context:
+        message: "{{trigger.body}}"
+        customer_name: "{{lookup_customer.name}}"
+        sentiment: "{{sentiment.sentiment}}"
+      output: [draft_response]
+      next: quality_gate
+
+    - id: draft_reply
+      name: Draft Reply
+      type: agent
+      agent: reply-drafter
+      model: gpt-4o-mini
+      context:
+        resolution: "{{tech_diagnosis.resolution}}"
+        customer_name: "{{lookup_customer.name}}"
+        sentiment: "{{sentiment.sentiment}}"
+      output: [draft_response]
+      next: quality_gate
+
+    - id: quality_gate
+      name: Quality Gate
+      type: gate
+      rules:
+        - if: "len(draft_response) < 20"
+          then: draft_reply
+          label: "Response too short"
+        - if: "tier == 'enterprise' and sentiment == 'angry'"
+          then: escalate
+          label: "VIP escalation"
+      default: send_reply
+
+    - id: escalate
+      name: Escalate to Human
+      type: output
+      action: "mcp://ticketing:9005/create-ticket"
+      input:
+        customer_id: "{{lookup_customer.customer_id}}"
+        body: "{{trigger.body}}"
+        priority: "high"
+        sentiment: "{{sentiment.sentiment}}"
+        intent: "{{classify.intent}}"
+
+    - id: send_reply
+      name: Send Reply
+      type: output
+      action: "mcp://email-service:9006/send"
+      input:
+        to: "{{trigger.sender}}"
+        subject: "Re: {{trigger.subject}}"
+        body: "{{draft_response}}"
