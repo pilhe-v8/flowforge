@@ -36,6 +36,20 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm.config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4000/health/liveliness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     ports:
@@ -43,10 +57,14 @@ services:
     environment:
       FLOWFORGE_DATABASE_URL: postgresql+asyncpg://flowforge:flowforge@postgres:5432/flowforge
       FLOWFORGE_REDIS_URL: redis://redis:6379
+      FLOWFORGE_LITELLM_URL: http://litellm:4000
+      FLOWFORGE_LITELLM_MASTER_KEY: sk-flowforge-local
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -57,10 +75,14 @@ services:
     environment:
       FLOWFORGE_DATABASE_URL: postgresql+asyncpg://flowforge:flowforge@postgres:5432/flowforge
       FLOWFORGE_REDIS_URL: redis://redis:6379
+      FLOWFORGE_LITELLM_URL: http://litellm:4000
+      FLOWFORGE_LITELLM_MASTER_KEY: sk-flowforge-local
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
     volumes:
       - ./backend:/app
