@@ -367,6 +367,17 @@ def upgrade() -> None:
     )
     op.create_index("idx_tokens_tenant_date", "token_usage", ["tenant_id", "created_at"])
 
+    # Seed the default dev tenant so JWT tokens minted by scripts/mint_dev_token.py
+    # (which hardcode tenant_id = 00000000-0000-0000-0000-000000000001) work immediately
+    # on a fresh stack without manual intervention.
+    op.get_bind().execute(
+        sa.text(
+            "INSERT INTO tenants (id, slug, name, config, is_active) "
+            "VALUES ('00000000-0000-0000-0000-000000000001', 'default', 'Default Tenant', '{}', true) "
+            "ON CONFLICT DO NOTHING"
+        )
+    )
+
 
 def downgrade() -> None:
     op.drop_table("token_usage")
