@@ -193,7 +193,11 @@ class NodeFactory:
     def _build_output_node(self, step: StepDef) -> Callable:
         async def output_node(state: dict) -> dict:
             inputs = self._resolve_inputs(step.input_mapping, state)
-            if self.tool_executor:
+            # Built-in output action: log
+            # This is intentionally not routed through ToolExecutor.
+            if step.action_uri == "log":
+                state[step.id] = inputs
+            elif self.tool_executor:
                 await self.tool_executor.execute(step.action_uri, inputs)
             state.setdefault("_audit_trail", []).append(
                 {"step_id": step.id, "type": "output", "input": inputs}

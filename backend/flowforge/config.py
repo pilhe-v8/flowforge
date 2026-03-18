@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     litellm_url: str = "http://localhost:4000"
     litellm_master_key: str = "sk-flowforge-local"
 
-    model_config = {"env_file": ".env", "env_prefix": "FLOWFORGE_"}
+    # Enables dev-only routes like /api/v1/dev/token
+    dev_mode: bool = False
+
+    # In local/docker dev we may share a .env file across services (eg litellm).
+    # Ignore unrelated env vars so Settings doesn't fail to load.
+    model_config = {"env_file": ".env", "env_prefix": "FLOWFORGE_", "extra": "ignore"}
 
 
 @lru_cache

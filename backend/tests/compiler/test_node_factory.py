@@ -116,3 +116,32 @@ async def test_agent_node_inline_stores_output_under_declared_vars():
     node_fn = factory.build_node(step)
     result = await node_fn({"trigger": {}})
     assert result["s1"]["reply"] == "Done"
+
+
+@pytest.mark.asyncio
+async def test_output_action_log_does_not_call_tool_executor_and_records_audit():
+    """Output steps with action 'log' are built-in and must not route via ToolExecutor."""
+    from unittest.mock import AsyncMock
+
+    from flowforge.compiler.node_factory import NodeFactory
+    from flowforge.compiler.parser import StepDef
+
+    tool_executor = AsyncMock()
+    factory = NodeFactory(tool_executor=tool_executor)
+
+    step = StepDef(
+        id="out",
+        name="Out",
+        step_type="output",
+        action_uri="log",
+        input_mapping={"message": "hello"},
+    )
+
+    node_fn = factory.build_node(step)
+    state = {"trigger": {}, "_audit_trail": []}
+    result = await node_fn(state)
+
+    tool_executor.execute.assert_not_called()
+    assert result["out"] == {"message": "hello"}
+    assert result["_audit_trail"][-1]["step_id"] == "out"
+    assert result["_audit_trail"][-1]["type"] == "output"

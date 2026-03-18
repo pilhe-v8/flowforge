@@ -24,17 +24,19 @@ class WorkflowValidator:
 
         for step in wf.steps:
             # Check tool references
-            if step.tool_uri and not self._tool_exists(step.tool_uri):
+            # If no tool catalogue is provided, treat tool references as unchecked.
+            if self.tools and step.tool_uri and not self._tool_exists(step.tool_uri):
                 errors.append(ValidationError(step.id, "tool", f"Tool not found: {step.tool_uri}"))
 
             # Check agent references
-            if step.agent_slug and step.agent_slug not in self.agents:
+            # If no agent catalogue is provided, treat agent references as unchecked.
+            if self.agents and step.agent_slug and step.agent_slug not in self.agents:
                 errors.append(
                     ValidationError(step.id, "agent", f"Agent profile not found: {step.agent_slug}")
                 )
 
             # Check fallback agent references
-            if step.fallback and step.fallback.agent not in self.agents:
+            if step.fallback and self.agents and step.fallback.agent not in self.agents:
                 errors.append(
                     ValidationError(
                         step.id,

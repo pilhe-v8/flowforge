@@ -59,7 +59,7 @@ def upgrade() -> None:
                     " input_schema, output_schema, is_active, created_at) "
                     "VALUES ("
                     "  gen_random_uuid(), :tid, :slug, :name, :protocol, :endpoint, "
-                    "  :description, :input_schema::jsonb, :output_schema::jsonb, "
+                    "  :description, CAST(:input_schema AS jsonb), CAST(:output_schema AS jsonb), "
                     "  true, now()"
                     ")"
                 ),

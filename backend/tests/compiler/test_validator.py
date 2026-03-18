@@ -77,6 +77,23 @@ def test_missing_tool_produces_error():
     assert any(e.field == "tool" and "not found" in e.message for e in errors)
 
 
+def test_tool_reference_is_not_validated_when_tool_catalogue_empty():
+    """When no tool catalogue is provided, tool references should not block validation."""
+    step = StepDef(
+        id="s1",
+        name="S1",
+        step_type="tool",
+        tool_uri="mcp://unknown/tool",
+        input_mapping={},
+        output_vars=["out"],
+        next_step=None,
+    )
+    wf = simple_workflow([step])
+    validator = WorkflowValidator(tool_catalogue={}, agent_profiles=AGENT_PROFILES)
+    errors = validator.validate(wf)
+    assert not any(e.field == "tool" for e in errors)
+
+
 def test_missing_agent_produces_error():
     """An agent step referencing a nonexistent profile should produce an error."""
     step = StepDef(
@@ -89,6 +106,21 @@ def test_missing_agent_produces_error():
     wf = simple_workflow([step])
     errors = make_validator().validate(wf)
     assert any(e.field == "agent" and "not found" in e.message for e in errors)
+
+
+def test_agent_reference_is_not_validated_when_agent_catalogue_empty():
+    """When no agent catalogue is provided, agent references should not block validation."""
+    step = StepDef(
+        id="s1",
+        name="S1",
+        step_type="agent",
+        agent_slug="nonexistent-agent",
+        output_vars=["out"],
+    )
+    wf = simple_workflow([step])
+    validator = WorkflowValidator(TOOL_CATALOGUE, agent_profiles={})
+    errors = validator.validate(wf)
+    assert not any(e.field == "agent" for e in errors)
 
 
 def test_invalid_next_step_produces_error():
