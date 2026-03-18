@@ -67,6 +67,8 @@ export function ExecutionDetailPage() {
   const [state, setState] = useState<LoadState>({ status: 'idle' });
   const [expandedStepIds, setExpandedStepIds] = useState<Set<string>>(() => new Set());
 
+  const errorMessage = state.status === 'error' ? state.message : null;
+
   useEffect(() => {
     if (!executionId) return;
     const id = executionId;
@@ -178,7 +180,7 @@ export function ExecutionDetailPage() {
     if (state.status === 'error') {
       return (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {state.message}
+          {errorMessage}
         </div>
       );
     }
@@ -339,7 +341,7 @@ export function ExecutionDetailPage() {
         </section>
       </div>
     );
-  }, [detail, executionId, expandedStepIds, state.status]);
+  }, [detail, executionId, expandedStepIds, errorMessage, state.status]);
 
   return (
     <div className="min-h-screen bg-slate-50">
