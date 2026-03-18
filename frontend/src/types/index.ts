@@ -142,6 +142,25 @@ export interface WorkflowVersion {
   created_at: string;
 }
 
+export interface WorkflowListItem {
+  slug: string;
+  name: string;
+  version: number;
+  status: 'draft' | 'active' | 'inactive' | string;
+  trigger_type: string | null;
+  node_count: number;
+  execution_count_24h: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface WorkflowsListResponse {
+  workflows: WorkflowListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
 export interface Execution {
   id: string;
   workflow_slug: string;
@@ -177,4 +196,18 @@ export interface ExecutionDetail {
   total_output_tokens: number;
   estimated_cost_usd: number;
   steps: ExecutionStep[];
+}
+
+export interface ExecutionListItem {
+  execution_id: string;
+  workflow_slug: string;
+  status: string;
+  duration_ms: number | null;
+  queued_at: string | null;
+}
+
+export interface ExecutionsListResponse {
+  executions: ExecutionListItem[];
+  total: number;
+  page: number;
 }

@@ -5,7 +5,6 @@ import type { NodeChange, EdgeChange, Connection, Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { nodeTypes } from './components/Nodes';
 import { NodePalette } from './components/Layout/NodePalette';
-import { Toolbar } from './components/Layout/Toolbar';
 import { ValidationBar } from './components/Layout/ValidationBar';
 import { PropertiesPanel } from './components/Layout/PropertiesPanel';
 import { useWorkflowStore } from './stores/workflowStore';
@@ -13,17 +12,6 @@ import { useToolCatalogueStore } from './stores/toolCatalogueStore';
 import { useModelsStore } from './stores/modelsStore';
 
 export default function App() {
-  // Dev auth bootstrap — auto-set JWT if not present (local dev only)
-  useEffect(() => {
-    if (!localStorage.getItem('flowforge_token')) {
-      const devToken = import.meta.env.VITE_DEV_JWT as string | undefined;
-      if (devToken) {
-        localStorage.setItem('flowforge_token', devToken);
-        window.location.reload();
-      }
-    }
-  }, []);
-
   const nodes = useWorkflowStore(s => s.nodes);
   const edges = useWorkflowStore(s => s.edges);
   const setNodes = useWorkflowStore(s => s.setNodes);
@@ -83,8 +71,7 @@ export default function App() {
   );
 
   return (
-    <div className="h-screen w-screen flex flex-col">
-      <Toolbar />
+    <div className="h-[calc(100vh-3rem)] w-screen flex flex-col">
       <div className="flex flex-1 overflow-hidden">
         <NodePalette />
         <div className="flex-1">

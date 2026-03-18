@@ -1,8 +1,11 @@
 import { useRef } from 'react';
+import { Link, NavLink, useMatch } from 'react-router-dom';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { TestRunner } from '../TestRunner';
 
 export function Toolbar() {
+  const isEditorRoute = !!useMatch('/workflows/:slug');
+
   const meta = useWorkflowStore(s => s.meta);
   const isDirty = useWorkflowStore(s => s.isDirty);
   const updateMeta = useWorkflowStore(s => s.updateMeta);
@@ -27,48 +30,95 @@ export function Toolbar() {
 
   return (
     <div className="h-12 bg-white border-b flex items-center px-4 gap-2 shadow-sm flex-shrink-0">
-      <span className="font-bold text-blue-600 text-lg mr-2">⚡ FlowForge</span>
-      <input
-        className="border rounded px-2 py-1 text-sm w-48"
-        value={meta.name}
-        onChange={e => updateMeta({ name: e.target.value })}
-        placeholder="Workflow name"
-      />
-      {/* Fix 5: Version badge */}
-      <span className="text-xs text-gray-500 border rounded px-2 py-1">v{meta.version}</span>
-      <div className="flex items-center gap-1 ml-2">
-        <button
-          disabled={!isDirty}
-          onClick={() => { save().catch(() => {}); }}
-          className="px-3 py-1 bg-blue-500 text-white rounded text-sm disabled:opacity-40 hover:bg-blue-600"
+      <Link
+        to="/workflows"
+        className="font-bold text-blue-600 text-lg mr-2 hover:text-blue-700"
+      >
+        ⚡ FlowForge
+      </Link>
+
+      <nav className="flex items-center gap-1">
+        <NavLink
+          to="/workflows"
+          className={({ isActive }) =>
+            `px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+            }`
+          }
+          end
         >
-          💾 Save
-        </button>
-        <button
-          onClick={() => { deploy().catch(() => {}); }}
-          className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+          Workflows
+        </NavLink>
+        <NavLink
+          to="/executions"
+          className={({ isActive }) =>
+            `px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
+            }`
+          }
+          end
         >
-          🚀 Deploy
-        </button>
-        <button onClick={undo} className="px-2 py-1 border rounded text-sm hover:bg-gray-50">↩</button>
-        <button onClick={redo} className="px-2 py-1 border rounded text-sm hover:bg-gray-50">↪</button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="px-2 py-1 border rounded text-sm hover:bg-gray-50"
-        >
-          📂 Load YAML
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".yaml,.yml"
-          className="hidden"
-          onChange={handleLoadFile}
-        />
-        {/* Fix 1: Test Runner button */}
-        <TestRunner onHighlight={(ids) => console.log('Highlighted step IDs:', ids)} />
-      </div>
-      {isDirty && <span className="text-xs text-orange-500 ml-auto">● Unsaved changes</span>}
+          Executions
+        </NavLink>
+      </nav>
+
+      {isEditorRoute && (
+        <>
+          <input
+            className="border rounded px-2 py-1 text-sm w-48"
+            value={meta.name}
+            onChange={e => updateMeta({ name: e.target.value })}
+            placeholder="Workflow name"
+          />
+          {/* Fix 5: Version badge */}
+          <span className="text-xs text-gray-500 border rounded px-2 py-1">v{meta.version}</span>
+          <div className="flex items-center gap-1 ml-2">
+            <button
+              disabled={!isDirty}
+              onClick={() => {
+                save().catch(() => {});
+              }}
+              className="px-3 py-1 bg-blue-500 text-white rounded text-sm disabled:opacity-40 hover:bg-blue-600"
+            >
+              💾 Save
+            </button>
+            <button
+              onClick={() => {
+                deploy().catch(() => {});
+              }}
+              className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+            >
+              🚀 Deploy
+            </button>
+            <button onClick={undo} className="px-2 py-1 border rounded text-sm hover:bg-gray-50">
+              ↩
+            </button>
+            <button onClick={redo} className="px-2 py-1 border rounded text-sm hover:bg-gray-50">
+              ↪
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-2 py-1 border rounded text-sm hover:bg-gray-50"
+            >
+              📂 Load YAML
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".yaml,.yml"
+              className="hidden"
+              onChange={handleLoadFile}
+            />
+            {/* Fix 1: Test Runner button */}
+            <TestRunner onHighlight={ids => console.log('Highlighted step IDs:', ids)} />
+          </div>
+          {isDirty && <span className="text-xs text-orange-500 ml-auto">● Unsaved changes</span>}
+        </>
+      )}
     </div>
   );
 }

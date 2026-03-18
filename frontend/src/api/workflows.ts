@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { WorkflowVersion } from '../types';
+import { WorkflowVersion, WorkflowsListResponse } from '../types';
 
 export async function fetchWorkflow(slug: string): Promise<WorkflowVersion> {
   const res = await apiClient.get<WorkflowVersion>(`/workflows/${slug}`);
@@ -17,4 +17,19 @@ export async function deployWorkflow(slug: string): Promise<void> {
 export async function listWorkflowVersions(slug: string): Promise<WorkflowVersion[]> {
   const res = await apiClient.get<{ versions: WorkflowVersion[] }>(`/workflows/${slug}/versions`);
   return res.data.versions;
+}
+
+export async function listWorkflows(params?: {
+  page?: number;
+  per_page?: number;
+  search?: string;
+}): Promise<WorkflowsListResponse> {
+  const res = await apiClient.get<WorkflowsListResponse>('/workflows', {
+    params: {
+      page: params?.page,
+      per_page: params?.per_page,
+      search: params?.search,
+    },
+  });
+  return res.data;
 }

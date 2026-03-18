@@ -142,7 +142,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   loadWorkflow: async (slug) => {
     const version = await apiFetch(slug);
     const { nodes, edges, meta } = yamlToCanvas(version.yaml_definition);
-    set({ nodes, edges, meta, isDirty: false, history: [], historyIndex: -1 });
+    set({ nodes, edges, meta: { ...meta, slug }, isDirty: false, history: [], historyIndex: -1 });
   },
 
   loadYaml: (yamlString) => {
