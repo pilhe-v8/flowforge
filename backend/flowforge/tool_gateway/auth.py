@@ -5,13 +5,16 @@ import jwt
 from flowforge.config import get_settings
 
 
-settings = get_settings()
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    settings = get_settings()
     try:
         payload = jwt.decode(
             credentials.credentials,
