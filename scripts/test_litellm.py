@@ -9,6 +9,9 @@ Reads LITELLM_MASTER_KEY from environment or .env file.
 Exit 0 if both models respond successfully, exit 1 otherwise.
 """
 
+# Prevent pytest from collecting this script as a test module.
+__test__ = False
+
 import os
 import sys
 import time

@@ -52,6 +52,7 @@ services:
 
   backend:
     build: ./backend
+    command: bash -lc "alembic -c /app/alembic.ini upgrade head && uvicorn flowforge.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     environment:
@@ -59,6 +60,7 @@ services:
       FLOWFORGE_REDIS_URL: redis://redis:6379
       FLOWFORGE_LITELLM_URL: http://litellm:4000
       FLOWFORGE_LITELLM_MASTER_KEY: sk-flowforge-local
+      FLOWFORGE_DEV_MODE: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,12 +73,13 @@ services:
 
   worker:
     build: ./backend
-    command: python -m flowforge.worker
+    command: bash -lc "alembic -c /app/alembic.ini upgrade head && python -m flowforge.worker"
     environment:
       FLOWFORGE_DATABASE_URL: postgresql+asyncpg://flowforge:flowforge@postgres:5432/flowforge
       FLOWFORGE_REDIS_URL: redis://redis:6379
       FLOWFORGE_LITELLM_URL: http://litellm:4000
       FLOWFORGE_LITELLM_MASTER_KEY: sk-flowforge-local
+      FLOWFORGE_DEV_MODE: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,7 +101,11 @@ services:
       retries: 3
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_DEV_JWT: ${VITE_DEV_JWT-}
     ports:
       - "5173:80"
     depends_on:

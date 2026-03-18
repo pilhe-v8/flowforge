@@ -2,3 +2,6 @@
 asyncio_mode = "auto"
 markers = ["e2e: requires live Docker Compose stack"]
 pythonpath = ["."]
+testpaths = ["backend/tests", "tests"]
+
+norecursedirs = ["scripts", "frontend", "node_modules", ".worktrees", "dist", "build"]

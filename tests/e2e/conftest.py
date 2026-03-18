@@ -1,13 +1,14 @@
 """E2E test fixtures — requires live Docker Compose stack."""
 
 import time
-import uuid
 import pytest
 import httpx
 import jwt
 
 BASE_URL = "http://localhost:8000/api/v1"
 JWT_SECRET = "dev-secret-change-in-production"
+LITELLM_URL = "http://localhost:4000"
+LITELLM_MASTER_KEY = "sk-flowforge-local"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -20,6 +21,30 @@ def require_stack() -> None:
     except (_httpx.ConnectError, _httpx.TimeoutException):
         pytest.skip(
             "Docker Compose stack not running — skipping all e2e tests",
+            allow_module_level=True,
+        )
+
+    # Also require LiteLLM to be able to serve chat completions.
+    # The e2e suite asserts an actual LLM reply, so missing provider credentials
+    # should skip rather than hang.
+    try:
+        resp = _httpx.post(
+            f"{LITELLM_URL}/v1/chat/completions",
+            headers={"Authorization": f"Bearer {LITELLM_MASTER_KEY}"},
+            json={
+                "model": "default",
+                "messages": [{"role": "user", "content": "ping"}],
+            },
+            timeout=10.0,
+        )
+        if resp.status_code >= 400:
+            pytest.skip(
+                f"LiteLLM is running but cannot complete requests ({resp.status_code}): {resp.text}",
+                allow_module_level=True,
+            )
+    except (_httpx.ConnectError, _httpx.TimeoutException) as e:
+        pytest.skip(
+            f"LiteLLM not reachable ({e}) — skipping all e2e tests",
             allow_module_level=True,
         )
 
@@ -37,7 +62,9 @@ def _mint_jwt(tenant_id: str) -> str:
 
 @pytest.fixture(scope="session")
 def tenant_id() -> str:
-    return str(uuid.uuid4())
+    # The docker-compose stack seeds a default tenant with this fixed UUID.
+    # E2E tests mint JWTs directly, so they must use a tenant_id that exists.
+    return "00000000-0000-0000-0000-000000000001"
 
 
 @pytest.fixture(scope="session")

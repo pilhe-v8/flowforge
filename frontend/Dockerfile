@@ -1,5 +1,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+ARG VITE_DEV_JWT
+ENV VITE_DEV_JWT=$VITE_DEV_JWT
+
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
