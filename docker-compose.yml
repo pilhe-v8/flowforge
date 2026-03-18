@@ -90,6 +90,14 @@ services:
     volumes:
       - ./backend:/app
 
+  tool-gateway:
+    build: ./backend
+    command: uvicorn flowforge.tool_gateway.main:app --host 0.0.0.0 --port 8010
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./backend:/app
+
   pdf-parser:
     build: ./pdf-parser
     ports:
