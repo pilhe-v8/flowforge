@@ -3,6 +3,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import datetime
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -70,6 +71,25 @@ class AuditLog:
     """Writes execution audit records to PostgreSQL."""
 
     @staticmethod
+    def _coerce_dt(value: object) -> datetime | None:
+        """Coerce ISO-8601 string timestamps to datetime for asyncpg.
+
+        The executor records timestamps as ISO strings; asyncpg requires actual
+        datetime objects for TIMESTAMP/TIMESTAMPTZ columns.
+        """
+
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
     async def write(envelope: MessageEnvelope, result, workflow_version: int = 0) -> None:
         # Validate tenant_id early — bail out loudly rather than crash mid-write
         try:
@@ -98,11 +118,14 @@ class AuditLog:
                 if not isinstance(step_entry, dict):
                     continue
 
+                started_at_dt = AuditLog._coerce_dt(step_entry.get("started_at"))
+                completed_at_dt = AuditLog._coerce_dt(step_entry.get("completed_at"))
+
                 # Collect timing data
-                if "started_at" in step_entry:
-                    starts.append(step_entry["started_at"])
-                if "completed_at" in step_entry:
-                    ends.append(step_entry["completed_at"])
+                if started_at_dt is not None:
+                    starts.append(started_at_dt)
+                if completed_at_dt is not None:
+                    ends.append(completed_at_dt)
 
                 # Build step_metadata, omitting keys whose values are None
                 raw_meta = {
@@ -122,8 +145,8 @@ class AuditLog:
                     status=step_entry.get("status", "completed"),
                     input_data=step_entry.get("input"),
                     output_data=step_entry.get("output"),
-                    started_at=step_entry.get("started_at"),
-                    completed_at=step_entry.get("completed_at"),
+                    started_at=started_at_dt,
+                    completed_at=completed_at_dt,
                     duration_ms=step_entry.get("duration_ms"),
                     step_metadata=step_metadata,
                 )
@@ -134,8 +157,7 @@ class AuditLog:
                 output_tokens = step_entry.get("output_tokens")
                 if input_tokens is not None and output_tokens is not None:
                     await db.execute(
-                        pg_insert(TokenUsage)
-                        .values(
+                        pg_insert(TokenUsage).values(
                             id=uuid.uuid4(),
                             tenant_id=tenant_uuid,
                             execution_id=execution_id,
@@ -145,7 +167,6 @@ class AuditLog:
                             output_tokens=int(output_tokens),
                             cost_usd=None,
                         )
-                        .on_conflict_do_nothing(index_elements=["execution_id", "step_id"])
                     )
 
             # Compute timing values (None when no step timing data available)
@@ -153,8 +174,8 @@ class AuditLog:
             completed_at: datetime | None = now
             duration_ms: int | None = None
             if starts and ends:
-                t0 = datetime.fromisoformat(min(starts))
-                t1 = datetime.fromisoformat(max(ends))
+                t0 = min(starts)
+                t1 = max(ends)
                 started_at = t0
                 completed_at = t1
                 duration_ms = int((t1 - t0).total_seconds() * 1000)
