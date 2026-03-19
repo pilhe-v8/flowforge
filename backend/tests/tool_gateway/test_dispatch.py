@@ -86,3 +86,25 @@ def test_invoke_maps_unexpected_errors_to_502():
         app.dependency_overrides = {}
 
     assert resp.status_code == 502
+
+
+def test_invoke_log_tool_returns_ok_with_auth_override():
+    from fastapi.testclient import TestClient
+
+    from flowforge.tool_gateway.auth import get_current_user
+    from flowforge.tool_gateway.main import app
+
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "u1"}
+    try:
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/tool-calls:invoke",
+            json={"tool_uri": "log", "inputs": {"message": "hi"}},
+        )
+    finally:
+        app.dependency_overrides = {}
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["output"] == {"ok": True}
