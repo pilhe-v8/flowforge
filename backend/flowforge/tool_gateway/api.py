@@ -29,7 +29,16 @@ class ToolDispatcher:
         _ = auth
 
         if tool_uri == "log":
-            logger.info("tool-gateway log tool: %s", inputs)
+            keys = []
+            if isinstance(inputs, dict):
+                keys = sorted(inputs.keys())
+                msg_len = None
+                msg = inputs.get("message")
+                if isinstance(msg, str):
+                    msg_len = len(msg)
+                logger.info("tool-gateway log tool: keys=%s message_len=%s", keys, msg_len)
+            else:
+                logger.info("tool-gateway log tool: input_type=%s", type(inputs).__name__)
             return {"ok": True}
 
         if tool_uri.startswith("mcp://"):
@@ -63,6 +72,7 @@ async def invoke_tool_call(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
+        logger.exception("tool-gateway invoke failed: tool_uri=%s", body.tool_uri)
         raise HTTPException(status_code=502, detail="Tool execution failed")
 
     return ToolCallInvokeResponse(
