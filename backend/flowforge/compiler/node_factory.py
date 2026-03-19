@@ -194,14 +194,25 @@ class NodeFactory:
         async def output_node(state: dict) -> dict:
             inputs = self._resolve_inputs(step.input_mapping, state)
             # Output actions are always routed via ToolExecutor when available.
+            tool_result = None
             if self.tool_executor:
-                await self.tool_executor.execute(step.action_uri, inputs)
+                if step.action_uri is None:
+                    raise ValueError(
+                        f"Output step '{step.id}' has tool_executor but action_uri is None"
+                    )
+                tool_result = await self.tool_executor.execute(step.action_uri, inputs)
 
             # Preserve historical behavior for output steps: store inputs in state.
             state[step.id] = inputs
-            state.setdefault("_audit_trail", []).append(
-                {"step_id": step.id, "type": "output", "input": inputs}
-            )
+            audit_entry = {
+                "step_id": step.id,
+                "type": "output",
+                "input": inputs,
+                "action_uri": step.action_uri,
+            }
+            if self.tool_executor:
+                audit_entry["tool_result"] = tool_result
+            state.setdefault("_audit_trail", []).append(audit_entry)
             return state
 
         return output_node

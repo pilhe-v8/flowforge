@@ -127,6 +127,7 @@ async def test_output_action_log_routes_via_tool_executor_and_records_audit():
     from flowforge.compiler.parser import StepDef
 
     tool_executor = AsyncMock()
+    tool_executor.execute.return_value = {"status": "ok"}
     factory = NodeFactory(tool_executor=tool_executor)
 
     step = StepDef(
@@ -143,5 +144,34 @@ async def test_output_action_log_routes_via_tool_executor_and_records_audit():
 
     tool_executor.execute.assert_awaited_once_with("log", {"message": "hello"})
     assert result["out"] == {"message": "hello"}
-    assert result["_audit_trail"][-1]["step_id"] == "out"
-    assert result["_audit_trail"][-1]["type"] == "output"
+    audit = result["_audit_trail"][-1]
+    assert audit["step_id"] == "out"
+    assert audit["type"] == "output"
+    assert audit["action_uri"] == "log"
+    assert audit["tool_result"] == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_output_node_with_missing_action_uri_raises_when_executor_present():
+    """Output steps must have action_uri when routed via ToolExecutor."""
+    from unittest.mock import AsyncMock
+
+    from flowforge.compiler.node_factory import NodeFactory
+    from flowforge.compiler.parser import StepDef
+
+    tool_executor = AsyncMock()
+    factory = NodeFactory(tool_executor=tool_executor)
+
+    step = StepDef(
+        id="out",
+        name="Out",
+        step_type="output",
+        action_uri=None,
+        input_mapping={"message": "hello"},
+    )
+
+    node_fn = factory.build_node(step)
+    with pytest.raises(ValueError, match="action_uri"):
+        await node_fn({"trigger": {}, "_audit_trail": []})
+
+    tool_executor.execute.assert_not_awaited()
