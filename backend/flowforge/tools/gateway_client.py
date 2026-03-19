@@ -19,7 +19,11 @@ class ToolGatewayClient:
         self._client = client or httpx.AsyncClient(timeout=30.0)
 
     async def aclose(self) -> None:
-        if self._owns_client and not self._client.is_closed:
+        is_closed = getattr(self._client, "is_closed", None)
+        if is_closed is None:
+            is_closed = getattr(self._client, "closed", False)
+
+        if self._owns_client and not is_closed:
             await self._client.aclose()
 
     async def __aenter__(self) -> "ToolGatewayClient":
