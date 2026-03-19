@@ -49,18 +49,27 @@ def test_invoke_rejects_expired_token(monkeypatch):
     assert resp.json()["detail"] == "Token expired"
 
 
-def test_invoke_allows_valid_token_through_to_501(monkeypatch):
+def test_invoke_allows_valid_token_through_and_executes(monkeypatch):
     from flowforge.tool_gateway.main import app
+    from flowforge.tool_gateway.api import get_tool_executor
 
     secret = _jwt_secret(monkeypatch)
     token = _make_token({"sub": "user"}, secret=secret)
 
-    client = TestClient(app)
-    resp = client.post(
-        "/v1/tool-calls:invoke",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"tool_uri": "mcp://example/tool", "inputs": {"q": "hi"}},
-    )
+    class FakeExecutor:
+        async def execute(self, tool_uri: str, inputs: dict, auth: dict | None = None) -> dict:
+            return {"ok": True}
 
-    assert resp.status_code == 501
-    assert resp.json()["detail"] == "Tool gateway auth/dispatch not implemented"
+    app.dependency_overrides[get_tool_executor] = lambda: FakeExecutor()
+    try:
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/tool-calls:invoke",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"tool_uri": "mcp://example/tool", "inputs": {"q": "hi"}},
+        )
+    finally:
+        app.dependency_overrides = {}
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "completed"
