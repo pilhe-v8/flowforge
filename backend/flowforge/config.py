@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     litellm_url: str = "http://localhost:4000"
     litellm_master_key: str = "sk-flowforge-local"
 
+    tool_gateway_url: str = "http://tool-gateway:8010"
+    tool_gateway_jwt: str = ""
+
     # Enables dev-only routes like /api/v1/dev/token
     dev_mode: bool = False
 
