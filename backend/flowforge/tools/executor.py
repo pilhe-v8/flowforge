@@ -5,6 +5,7 @@ All tool calls are routed through the Tool Gateway (fail-closed).
 
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol, cast
 
 from flowforge.config import get_settings
@@ -12,7 +13,12 @@ from flowforge.tools.gateway_client import ToolGatewayClient
 
 
 class GatewayClient(Protocol):
-    async def invoke(self, tool_uri: str, inputs: dict, context: dict | None = None) -> object: ...
+    async def invoke(
+        self,
+        tool_uri: str,
+        inputs: dict[str, object],
+        context: dict[str, object] | None = None,
+    ) -> object: ...
 
 
 class ToolExecutor:
@@ -46,9 +52,9 @@ class ToolExecutor:
     async def execute(
         self,
         tool_uri: str,
-        inputs: dict,
-        auth: dict | None = None,
-        context: dict | None = None,
+        inputs: dict[str, object],
+        auth: dict[str, object] | None = None,
+        context: dict[str, object] | None = None,
     ) -> object:
         """Execute the tool at *tool_uri* with the given *inputs* via gateway.
 
@@ -58,8 +64,10 @@ class ToolExecutor:
         _ = auth
         try:
             return await self.gateway_client.invoke(tool_uri, inputs, context=context)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             raise RuntimeError(
                 f"Tool gateway invocation failed for tool_uri={tool_uri!r}. "
                 "Check tool gateway connectivity/configuration and tool URI validity."
-            ) from e
+            ) from None

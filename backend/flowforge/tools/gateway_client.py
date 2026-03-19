@@ -35,8 +35,8 @@ class ToolGatewayClient:
     async def invoke(
         self,
         tool_uri: str,
-        inputs: dict,
-        context: dict | None = None,
+        inputs: dict[str, object],
+        context: dict[str, object] | None = None,
     ) -> object:
         url = f"{self.base_url}/v1/tool-calls:invoke"
         headers = {"Authorization": f"Bearer {self.jwt_token}"}

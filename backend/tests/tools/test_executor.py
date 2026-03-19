@@ -80,3 +80,4 @@ async def test_tool_executor_sanitizes_gateway_invoke_exception():
     msg = str(excinfo.value)
     assert tool_uri in msg
     assert secret not in msg
+    assert excinfo.value.__cause__ is None
