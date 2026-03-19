@@ -1,5 +1,24 @@
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_from_dotenv():
+    """Keep settings tests independent of a local .env file."""
+
+    from flowforge.config import Settings
+
+    original_env_file = Settings.model_config.get("env_file")
+    Settings.model_config["env_file"] = None
+    try:
+        yield
+    finally:
+        if original_env_file is None:
+            Settings.model_config.pop("env_file", None)
+        else:
+            Settings.model_config["env_file"] = original_env_file
+
 
 def test_settings_tool_gateway_defaults_when_env_missing(monkeypatch):
     from flowforge.config import get_settings
