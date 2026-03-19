@@ -5,6 +5,28 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
+@pytest.fixture(autouse=True)
+def _isolate_settings_and_configure_tool_gateway(monkeypatch):
+    """Keep worker tests independent of local .env and satisfy fail-closed ToolExecutor."""
+
+    from flowforge.config import Settings, get_settings
+
+    original_env_file = Settings.model_config.get("env_file")
+    Settings.model_config["env_file"] = None
+
+    monkeypatch.setenv("FLOWFORGE_TOOL_GATEWAY_URL", "http://example:9999")
+    monkeypatch.setenv("FLOWFORGE_TOOL_GATEWAY_JWT", "test-jwt")
+    get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        get_settings.cache_clear()
+        if original_env_file is None:
+            Settings.model_config.pop("env_file", None)
+        else:
+            Settings.model_config["env_file"] = original_env_file
+
+
 class FakeAsyncContextManager:
     def __init__(self, db):
         self._db = db
@@ -33,6 +55,8 @@ class TestGraphCache:
         from flowforge.worker import graph_cache
 
         graph_cache._graph_cache.clear()
+        graph_cache._tool_executor = None
+        graph_cache._llm_client = None
 
     @pytest.mark.asyncio
     async def test_cache_hit_returns_cached_graph(self):

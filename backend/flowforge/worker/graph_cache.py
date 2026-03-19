@@ -8,8 +8,6 @@ from flowforge.config import get_settings
 from flowforge.db.session import AsyncSessionLocal
 from flowforge.models import WorkflowVersion, Workflow
 from flowforge.llm.client import LLMClient
-from flowforge.tools.mcp_client import MCPToolClient
-from flowforge.tools.http_client import HTTPToolClient
 from flowforge.tools.executor import ToolExecutor
 
 # In-process TTL cache: key -> (graph, version, expires_at)
@@ -29,9 +27,8 @@ def _get_runtime_deps() -> tuple[ToolExecutor, LLMClient]:
     """
     global _tool_executor, _llm_client
     if _tool_executor is None:
-        mcp_client = MCPToolClient()
-        http_client = HTTPToolClient()
-        _tool_executor = ToolExecutor(mcp_client=mcp_client, http_client=http_client)
+        # Fail-closed: ToolExecutor requires gateway URL/JWT via settings/env.
+        _tool_executor = ToolExecutor()
     if _llm_client is None:
         settings = get_settings()
         _llm_client = LLMClient(
