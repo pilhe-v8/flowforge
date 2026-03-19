@@ -1,32 +1,48 @@
-"""Tool executor — routes tool calls by URI scheme."""
+"""Tool executor.
+
+All tool calls are routed through the Tool Gateway (fail-closed).
+"""
+
+from flowforge.config import get_settings
+from flowforge.tools.gateway_client import ToolGatewayClient
 
 
 class ToolExecutor:
-    """Routes tool execution to the appropriate client based on URI scheme."""
+    """Executes tools via ToolGatewayClient (fail-closed)."""
 
-    def __init__(self, mcp_client, http_client):
-        self.mcp = mcp_client
-        self.http = http_client
+    def __init__(
+        self,
+        gateway_client: object | None = None,
+        tool_gateway_url: str | None = None,
+        tool_gateway_jwt: str | None = None,
+    ) -> None:
+        if gateway_client is not None:
+            self.gateway_client = gateway_client
+            return
+
+        settings = get_settings()
+        url = tool_gateway_url if tool_gateway_url is not None else settings.tool_gateway_url
+        jwt = tool_gateway_jwt if tool_gateway_jwt is not None else settings.tool_gateway_jwt
+
+        if not url or not jwt:
+            raise RuntimeError(
+                "Tool gateway is not configured (fail-closed). "
+                "Set FLOWFORGE_TOOL_GATEWAY_URL and FLOWFORGE_TOOL_GATEWAY_JWT."
+            )
+
+        self.gateway_client = ToolGatewayClient(base_url=url, jwt_token=jwt)
 
     async def execute(
         self,
         tool_uri: str,
         inputs: dict,
         auth: dict | None = None,
+        context: dict | None = None,
     ) -> dict:
-        """Execute the tool at *tool_uri* with the given *inputs*.
+        """Execute the tool at *tool_uri* with the given *inputs* via gateway.
 
-        Routing:
-            mcp://…    → MCPToolClient
-            http://…   → HTTPToolClient
-            https://…  → HTTPToolClient
-
-        Raises:
-            ValueError: if the URI scheme is not recognised.
+        Note: *auth* is kept for backwards compatibility but is not used here;
+        callers should include identity/tenant metadata in *context*.
         """
-        if tool_uri.startswith("mcp://"):
-            return await self.mcp.call(tool_uri, inputs)
-        elif tool_uri.startswith("http://") or tool_uri.startswith("https://"):
-            return await self.http.call(tool_uri, inputs, auth)
-        else:
-            raise ValueError(f"Unknown protocol in URI: {tool_uri}")
+        _ = auth
+        return await self.gateway_client.invoke(tool_uri, inputs, context=context)
